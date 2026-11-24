@@ -280,7 +280,9 @@ async function scanNext() {
     W.idx++; setTimeout(scanNext, 1300);
   } catch (e) {
     if (e.message === 'bekor') return;
-    toast(e.message); $('#w-msg').textContent = e.message + ' — qayta urinilmoqda'; setTimeout(scanNext, 2000);
+    toast(e.message, 5000);
+    if (/allaqachon|ro‘yxatdan o‘tgan/.test(e.message)) { $('#w-msg').textContent = 'Bu yuz boshqa xodimga yozilgan — keyingisiga o‘tildi'; W.idx++; setTimeout(scanNext, 2200); }
+    else { $('#w-msg').textContent = e.message + ' — qayta urinilmoqda'; setTimeout(scanNext, 2000); }
   }
 }
 function skipFace() { if (W.abort) W.abort.abort(); W.idx++; setTimeout(scanNext, 50); }

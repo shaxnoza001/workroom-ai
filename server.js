@@ -16,7 +16,7 @@ const GEMINI_MODEL_ENV = (process.env.GEMINI_MODEL || '').trim();
 const AI = { model: GEMINI_MODEL_ENV || '', ok: null, error: '', at: 0, models: [] };
 const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TZ = 'Asia/Tashkent';
-const FACE_THRESHOLD = Number(process.env.FACE_THRESHOLD || 0.5);
+const FACE_THRESHOLD = Number(process.env.FACE_THRESHOLD || 0.45); // o'lchov: turli odamlar orasidagi eng kichik masofa 0.49
 
 // ---------- Storage ----------
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -348,7 +348,7 @@ app.post('/api/rooms/:code/checkin', (req, res) => {
     .sort((a, b) => a.d - b.d);
   const best = scores[0] && scores[0].e, bestD = scores[0] ? scores[0].d : 9;
   if (!best || bestD > FACE_THRESHOLD) return res.json({ match: false });
-  if (scores[1] && scores[1].d - bestD < 0.06) return res.json({ match: false, ambiguous: true });
+  if (scores[1] && scores[1].d - bestD < 0.05) return res.json({ match: false, ambiguous: true });
   if (!adm && best.id !== self.id) return res.json({ match: true, notYou: true, employee: { name: best.name } });
   const { date, time } = nowTZ();
   const today = r.attendance.filter((a) => a.empId === best.id && a.date === date);

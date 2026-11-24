@@ -47,16 +47,18 @@ const Face = (() => {
   const avg = (pts) => ({ x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length });
   // Yuz haqiqatan yuzmi va kadrga to'g'ri tushganmi
   function quality(video, det) {
+    // Chegaralar 22 ta haqiqiy yuzda o'lchab tanlangan (oddiy qarash ham ±0.27 burilish beradi)
     const b = det.detection.box, W = video.videoWidth, H = video.videoHeight, p = det.landmarks.positions;
-    if (det.detection.score < (useSsd ? 0.75 : 0.7)) return 'Yuz aniq ko‘rinmayapti — yorug‘roq joyga o‘ting';
-    if (b.width < W * 0.2) return 'Kameraga yaqinroq keling';
-    if (b.width > W * 0.8) return 'Biroz uzoqroq turing';
-    const ar = b.height / b.width; if (ar < 0.85 || ar > 1.7) return 'Kameraga to‘g‘ri qarang';
+    if (det.detection.score < 0.6) return 'Yuz aniq ko‘rinmayapti — yorug‘roq joyga o‘ting';
+    if (b.width < W * 0.16) return 'Kameraga yaqinroq keling';
+    if (b.width > W * 0.85) return 'Biroz uzoqroq turing';
+    const ar = b.height / b.width; if (ar < 0.7 || ar > 1.9) return 'Kameraga qarang';
     const L = avg(p.slice(36, 42)), R = avg(p.slice(42, 48)), nose = p[30], mouth = avg(p.slice(48, 68));
     const eyeD = R.x - L.x;
-    if (eyeD < b.width * 0.25 || !(L.y < nose.y && R.y < nose.y && nose.y < mouth.y) || nose.x < L.x - eyeD * 0.3 || nose.x > R.x + eyeD * 0.3) return 'Kameraga to‘g‘ri qarang';
+    if (eyeD < b.width * 0.2 || !(L.y < nose.y && R.y < nose.y && nose.y < mouth.y)) return 'Kameraga qarang';
+    if (Math.abs(yaw(det)) > 0.45) return 'Kameraga ko‘proq to‘g‘ri qarang';
     const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
-    if (Math.abs(cx - W / 2) > W * 0.2 || Math.abs(cy - H / 2) > H * 0.24) return 'Yuzingizni oval markaziga keltiring';
+    if (Math.abs(cx - W / 2) > W * 0.26 || Math.abs(cy - H / 2) > H * 0.3) return 'Yuzingizni oval markaziga keltiring';
     return null;
   }
   // Toza ramka: faqat yuz burchaklari (nuqtalar yo'q)
@@ -86,37 +88,27 @@ const Face = (() => {
   const dist = (a, b) => Math.sqrt(a.reduce((s, v, i) => s + (v - b[i]) ** 2, 0));
   const mean = (list) => list[0].map((_, i) => list.reduce((s, d) => s + d[i], 0) / list.length);
 
-  // Ro'yxatga olish: 3 ta to'g'ri + 2 ta biroz burilgan namuna, hammasi bitta yuzga tegishli bo'lishi tekshiriladi
+  // Ro'yxatga olish: 5 ta sifatli namuna (tabiiy kichik harakatlar bilan), hammasi bitta yuzga tegishli bo'lishi tekshiriladi
   function enroll(video, canvas, { onStatus, onProgress, signal } = {}) {
     return new Promise((resolve, reject) => {
-      let got = [], photo = null, lastT = 0, turned = 0;
+      let got = [], photo = null, lastT = 0;
       const tick = async () => {
         if (signal && signal.aborted) return reject(new Error('bekor'));
         try {
           const det = await detect(video, true);
           if (!det) { draw(canvas, video, null); onStatus && onStatus('Kameraga qarang'); }
           else {
-            const q = quality(video, det), y = yaw(det), front = got.length < 3;
-            let msg = null;
-            if (front) { if (q) msg = q; else if (Math.abs(y) > 0.1) msg = 'To‘g‘ri kameraga qarang'; }
-            else {
-              const qq = q && !/to‘g‘ri qarang/.test(q) ? q : null;
-              if (qq) msg = qq;
-              else if (Math.abs(y) < 0.08) msg = turned ? 'Endi boshqa tomonga sal burang' : 'Boshingizni sal chapga yoki o‘ngga burang';
-              else if (Math.abs(y) > 0.32) msg = 'Juda ko‘p burildi — sal kamroq';
-              else if (turned && Math.sign(y) === turned) msg = 'Endi boshqa tomonga sal burang';
-            }
-            draw(canvas, video, det, msg ? 'bad' : 'ok');
-            if (msg) onStatus && onStatus(msg);
-            else if (Date.now() - lastT > 300) {
-              if (!front) turned = Math.sign(y);
+            const q = quality(video, det);
+            draw(canvas, video, det, q ? 'bad' : 'ok');
+            if (q) onStatus && onStatus(q);
+            else if (Date.now() - lastT > 280) {
               lastT = Date.now(); got.push(Array.from(det.descriptor));
-              if (!photo) photo = snapshot(video, det);
+              if (!photo || got.length === 2) photo = snapshot(video, det);
               onProgress && onProgress(got.length / 5);
-              onStatus && onStatus(got.length < 3 ? 'Skaner qilinmoqda… qimirlamang' : got.length < 5 ? 'Zo‘r! Endi boshingizni sal burang' : 'Tayyor ✓');
+              onStatus && onStatus(got.length < 5 ? 'Skaner qilinmoqda… kameraga qarab turing' : 'Tayyor ✓');
               if (got.length >= 5) {
                 const m = mean(got);
-                if (got.some((d) => dist(d, m) > 0.42)) { got = []; photo = null; turned = 0; onProgress && onProgress(0); onStatus && onStatus('Sifat past — qaytadan, yorug‘roq joyda'); }
+                if (got.some((d) => dist(d, m) > 0.42)) { got = []; photo = null; onProgress && onProgress(0); onStatus && onStatus('Kadrda boshqa yuz aralashdi — qaytadan, faqat bitta odam qarasin'); }
                 else return resolve({ descriptors: got, photo });
               }
             }
@@ -127,23 +119,25 @@ const Face = (() => {
       tick();
     });
   }
-  // Tirik yuz: to'g'ri → yon tomonga burish → yana to'g'ri. Oxirgi to'g'ri kadrning izi qaytadi.
-  function liveness(video, canvas, { onStatus, signal, timeout = 9000 } = {}) {
+  // Tirik yuz: boshlang'ich holatga nisbatan boshni yon tomonga burish va qaytish (tekis rasm/ekranda burilish o'zgarmaydi)
+  function liveness(video, canvas, { onStatus, signal, timeout = 10000 } = {}) {
     return new Promise((resolve) => {
-      const t0 = Date.now(); let phase = 0, lastBox = null;
+      const t0 = Date.now(); let phase = 0, base = null, n = 0, lastBox = null, peak = 0;
       const tick = async () => {
         if ((signal && signal.aborted) || Date.now() - t0 > timeout) return resolve(null);
         try {
-          const final = phase === 2;
-          const det = await detect(video, final);
+          const det = await detect(video, phase === 2);
           if (!det) { draw(canvas, video, null); onStatus && onStatus('Yuzingizni kameradan uzoqlashtirmang'); }
           else {
             const b = det.detection.box;
-            if (lastBox && Math.abs(b.x - lastBox.x) > lastBox.width * 0.6) return resolve(null); // boshqa yuz
+            if (lastBox && Math.abs((b.x + b.width / 2) - (lastBox.x + lastBox.width / 2)) > lastBox.width * 0.9) return resolve(null); // boshqa odam
             lastBox = b;
-            const y = yaw(det); draw(canvas, video, det, phase === 2 ? 'ok' : null);
-            if (phase === 0) { onStatus && onStatus('↔ Boshingizni sekin chapga yoki o‘ngga burang'); if (Math.abs(y) > 0.17) phase = 1; }
-            else if (phase === 1) { onStatus && onStatus('Endi yana kameraga to‘g‘ri qarang'); if (Math.abs(y) < 0.07) phase = 2; }
+            const y = yaw(det);
+            if (base === null || n < 2) { base = base === null ? y : (base + y) / 2; n++; }
+            const d = Math.abs(y - base); peak = Math.max(peak, d);
+            draw(canvas, video, det, phase === 2 ? 'ok' : null);
+            if (phase === 0) { onStatus && onStatus('↔ Boshingizni sekin chapga yoki o‘ngga burang'); if (n >= 2 && d >= 0.15) phase = 1; }
+            else if (phase === 1) { onStatus && onStatus('Zo‘r! Endi yana kameraga qarang'); if (d <= Math.max(0.08, peak * 0.4)) phase = 2; }
             else if (det.descriptor && !quality(video, det)) return resolve(det);
           }
         } catch (_) { return resolve(null); }

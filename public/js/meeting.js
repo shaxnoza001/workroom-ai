@@ -12,12 +12,15 @@ const Meeting = (() => {
     S.cleanup = leave;
     history.replaceState(null, '', '#meet=' + id);
     render();
-    try { st.ice = (await W.api('/api/ice')).iceServers; } catch (_) { st.ice = [{ urls: 'stun:stun.l.google.com:19302' }]; }
+    const me = st;
+    try { me.ice = (await W.api('/api/ice')).iceServers; } catch (_) { me.ice = [{ urls: 'stun:stun.l.google.com:19302' }]; }
+    if (st !== me) return;
     try { st.local = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 360 }, facingMode: 'user' }, audio: { echoCancellation: true, noiseSuppression: true } }); }
     catch (_) {
       try { st.local = await navigator.mediaDevices.getUserMedia({ audio: true }); st.cam = false; W.toast('Kamera topilmadi — faqat ovoz'); }
       catch (e) { st.local = new MediaStream(); st.cam = st.mic = false; W.toast('Mikrofon/kamera ruxsati berilmadi'); }
     }
+    if (st !== me) { me.local && me.local.getTracks().forEach((t) => t.stop()); return; }
     tile('me', myName + ' (siz)', st.local, true);
     bindSocket();
     socket.emit('meet:join', { code: CODE, meetingId: id, name: myName });
@@ -95,6 +98,7 @@ const Meeting = (() => {
     if (st.screen) { const s = conn.getSenders().find((x) => x.track && x.track.kind === 'video'); if (s) s.replaceTrack(st.screen.getVideoTracks()[0]); }
     conn.onicecandidate = (e) => e.candidate && socket.emit('meet:signal', { to: sid, data: { candidate: e.candidate } });
     conn.ontrack = (e) => {
+      if (!st || !st.peers[sid]) return;
       const stream = e.streams[0]; st.peers[sid].stream = stream; tile(sid, name, stream);
       if (st.dest && stream.getAudioTracks().length) mix(stream);
     };
@@ -118,6 +122,7 @@ const Meeting = (() => {
     };
     h['meet:joined'] = ({ sid, name }) => { W.toast(`${name} qo‘shildi`); st.peers[sid] || (st.pendingNames = { ...(st.pendingNames || {}), [sid]: name }); };
     h['meet:signal'] = async ({ from, name, data }) => {
+      if (!st) return;
       const conn = pc(from, name || (st.pendingNames || {})[from] || 'Ishtirokchi');
       if (data.sdp) {
         await conn.setRemoteDescription(data.sdp);
@@ -159,19 +164,20 @@ const Meeting = (() => {
     syncButtons();
   }
   function syncButtons() {
-    if (!W.$('#b-mic')) return;
+    if (!st || !W.$('#b-mic')) return;
     W.$('#b-mic').classList.toggle('off', !st.mic); W.$('#b-cam').classList.toggle('off', !st.cam);
     W.$('#b-screen').classList.toggle('rec', !!st.screen); W.$('#b-ai').classList.toggle('off', !st.listening);
   }
 
   // ---- Meeting AI: jonli o'zbekcha subtitr (Web Speech API, uz-UZ) ----
   function startListening() {
-    if (!SR || !st.mic) return;
+    if (!SR || !st || !st.mic) return;
     st.wantListen = true;
     if (st.listening) return;
     const r = new SR(); r.lang = 'uz-UZ'; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1;
     let lastSent = 0;
     r.onresult = (e) => {
+      if (!st) return;
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript.trim(); if (!t) continue;
@@ -181,8 +187,8 @@ const Meeting = (() => {
       const iEl = W.$('#interim'); if (iEl) iEl.textContent = interim ? `${st.myName}: ${interim}` : '';
       if (interim && Date.now() - lastSent > 500) { lastSent = Date.now(); socket.emit('meet:caption', { text: interim, final: false }); showCaption('me', st.myName, interim, false); }
     };
-    r.onerror = (e) => { if (e.error === 'not-allowed') { st.wantListen = false; W.toast('Mikrofon ruxsati yo‘q — subtitr o‘chdi'); } };
-    r.onend = () => { st.listening = false; if (st && st.wantListen && st.mic) setTimeout(startListening, 250); syncButtons(); };
+    r.onerror = (e) => { if (!st) return; if (e.error === 'not-allowed') { st.wantListen = false; W.toast('Mikrofon ruxsati yo‘q — subtitr o‘chdi'); } };
+    r.onend = () => { if (!st) return; st.listening = false; if (st && st.wantListen && st.mic) setTimeout(startListening, 250); syncButtons(); };
     try { r.start(); st.sr = r; st.listening = true; } catch (_) {}
     syncButtons();
   }

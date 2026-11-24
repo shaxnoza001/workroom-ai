@@ -72,6 +72,13 @@ Kamera/mikrofon faqat `localhost` yoki **https** da ishlaydi (Render avtomatik h
 - **Telegram**: Render’da **webhook** rejimi — bepul tarifda server uxlab qolsa ham bot xabari uni uyg‘otadi.
 - **Sozlamalar → Tizim holati**: Gemini va bot ishlayaptimi, xato bo‘lsa — sababi.
 
+## Face ID maslahatlari
+- Ro‘yxatdan o‘tkazishda yuz yorug‘ joyda, kameraga ~50 sm masofada bo‘lsin; kadrda faqat bitta odam.
+- Kiosk: xodim kameraga qaraydi → “boshingizni sekin chapga yoki o‘ngga burang” → yana qaraydi → ~10 soniyada belgilanadi.
+- Tirik yuz tekshiruvi rasm/telefon ekranini o‘tkazmaydi. Juda sekin qurilmada noqulay bo‘lsa: Sozlamalar → Xavfsizlik → o‘chirish.
+- Noto‘g‘ri yozilgan yuz: Xodimlar → ✎ → “Face ID’ni o‘chirish” → qayta skaner.
+- Sinov (v8): 22 ta haqiqiy yuzda chegaralar o‘lchangan; brauzerda yuz videolari bilan ro‘yxatga olish, tanish, begona odamni rad etish va rasm bilan aldashni bloklash tekshirilgan.
+
 ## Cheklovlar (keyingi bosqich)
 - Face ID’da “tirik yuz” tekshiruvi yo‘q — telefondagi rasmni ko‘rsatib aldash mumkin. Kioskni rahbar ko‘radigan joyga qo‘ying; keyin ko‘z qisish/bosh burish tekshiruvini qo‘shamiz.
 - Video mesh ~6 kishigacha yaxshi; ko‘proq bo‘lsa LiveKit/Jitsi server kerak.
