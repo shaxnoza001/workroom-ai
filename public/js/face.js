@@ -14,6 +14,7 @@ const Face = (() => {
   function load() {
     if (!ready) ready = (async () => {
       if (!window.faceapi) await loadScript(LIB);
+      if (faceapi.tf && faceapi.tf.ready) await faceapi.tf.ready();
       try { await faceapi.nets.ssdMobilenetv1.loadFromUri(MODELS); } catch (_) { useSsd = false; await faceapi.nets.tinyFaceDetector.loadFromUri(MODELS); }
       await Promise.all([faceapi.nets.faceLandmark68Net.loadFromUri(MODELS), faceapi.nets.faceRecognitionNet.loadFromUri(MODELS)]);
     })().catch((e) => { ready = null; throw e; });
@@ -24,8 +25,10 @@ const Face = (() => {
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false }); }
     catch (e) { throw new Error(e.name === 'NotAllowedError' ? 'Kameraga ruxsat berilmadi. Manzil satridagi kamera belgisidan ruxsat bering.' : 'Kamera topilmadi yoki band.'); }
-    video.srcObject = stream; video.muted = true; video.playsInline = true;
-    await video.play();
+    video.setAttribute('playsinline', ''); video.setAttribute('muted', ''); video.setAttribute('autoplay', '');
+    video.muted = true; video.playsInline = true; video.srcObject = stream;
+    try { await video.play(); } catch (_) { /* iOS: foydalanuvchi bosgandan keyin o'ynaydi */ }
+    if (!video.videoWidth) await new Promise((r) => { video.onloadedmetadata = r; setTimeout(r, 3000); });
     return stream;
   }
   function stopCam(stream) { if (stream) stream.getTracks().forEach((t) => t.stop()); }

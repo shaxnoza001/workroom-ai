@@ -156,7 +156,8 @@ app.get('/api/rooms/:code/brief', limit('brief', 10, 600000));
 app.get('/api/rooms/:code', limit('lookup', 60, 60000));
 
 app.use(express.json({ limit: '2mb' }));
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: PROD ? '1h' : 0, index: 'index.html' }));
+// no-cache + ETag: yangilanishdan keyin brauzer eski JS/CSS'ni ishlatmaydi (o'zgarmagan fayl 304 bilan tez keladi)
+app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html', etag: true, setHeaders: (res) => res.set('Cache-Control', 'no-cache') }));
 
 function getRoom(req, res) {
   const r = roomOf(req.params.code);
@@ -1005,10 +1006,12 @@ setInterval(() => {
     r.absences = r.absences || []; r.suggestions = r.suggestions || [];
     if (r.autoCheck === date || toMin(time) < toMin(r.workStart) + (r.graceMin || 15)) continue;
     if (toMin(time) > toMin(r.workEnd)) continue;
-    r.autoCheck = date;
     const came = new Set(r.attendance.filter((a) => a.date === date && a.type === 'in').map((a) => a.empId));
+    // Bugun hech kim belgilanmagan bo'lsa (dam olish kuni yoki kiosk hali ishlatilmayapti) — yolg'on signal bermaymiz
+    if (!came.size) { if (toMin(time) > toMin(r.workStart) + 180) r.autoCheck = date; continue; }
+    r.autoCheck = date;
     const away = new Set(r.absences.filter((a) => a.date === date).map((a) => a.empId));
-    const missing = r.employees.filter((e) => !e.isAdmin && !came.has(e.id) && !away.has(e.id));
+    const missing = r.employees.filter((e) => !e.isAdmin && !e.pending && (e.descriptors || []).length && !came.has(e.id) && !away.has(e.id));
     const missIds = new Set(missing.map((e) => e.id));
     for (const e of missing) {
       makeSuggestion(r, e, 'xabarsiz kelmadi', 'auto', missIds);
@@ -1025,6 +1028,7 @@ setInterval(async () => {
   for (const r of Object.values(db.rooms)) {
     if (!r.telegramChatId || r.lastBrief === date || toMin(time) < toMin(r.workEnd)) continue;
     r.lastBrief = date; save();
+    if (!r.attendance.some((x) => x.date === date)) continue; // dam olish kuni — xulosa yuborilmaydi
     tgSend(r, esc(await makeBrief(r)));
   }
 }, 5 * 60 * 1000);
@@ -1034,7 +1038,7 @@ setInterval(() => {
   const { date, time } = nowTZ();
   for (const r of Object.values(db.rooms)) {
     if (!r.telegramChatId || r.lastReport === date) continue;
-    if (toMin(time) >= toMin(r.workStart) + 30) { r.lastReport = date; save(); tgSend(r, attendanceText(r)); }
+    if (toMin(time) >= toMin(r.workStart) + 30) { r.lastReport = date; save(); if (r.attendance.some((x) => x.date === date)) tgSend(r, attendanceText(r)); }
   }
 }, 60 * 1000);
 
@@ -1062,8 +1066,8 @@ app.post('/api/rooms/:code/diag', limit('diag', 10, 600000), async (req, res, ne
     res.json(out);
   } catch (e) { next(e); }
 });
-app.get('/room/:code', (_, res) => res.sendFile(path.join(__dirname, 'public', 'app.html')));
-app.get('/admin', (_, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
+app.get('/room/:code', (_, res) => { res.set('Cache-Control', 'no-cache'); res.sendFile(path.join(__dirname, 'public', 'app.html')); });
+app.get('/admin', (_, res) => { res.set('Cache-Control', 'no-cache'); res.sendFile(path.join(__dirname, 'public', 'admin.html')); });
 
 // 404 va xatolar — JSON, ichki tafsilotlarsiz
 app.use('/api/', (req, res) => res.status(404).json({ error: 'Topilmadi' }));

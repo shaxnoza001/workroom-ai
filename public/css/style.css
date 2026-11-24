@@ -358,3 +358,79 @@ tr.click{cursor:pointer}tr.click:hover td{background:rgba(255,255,255,.02)}
 .kres.ok{background:rgba(6,60,46,.78)}.kres.info{background:rgba(20,30,70,.8)}.kres.bad{background:rgba(90,20,35,.8)}
 .kres b{font-family:var(--head);font-size:clamp(20px,3.4vw,30px)}.kres .av{border:3px solid rgba(255,255,255,.8)}
 .kres .badge{font-size:14px;padding:6px 12px}.kres .muted{color:rgba(255,255,255,.8)}.kres .kbig{color:#fff}
+
+/* =====================================================================
+   GLASSMORPHISM v7 — "shisha ofis": muzli shisha panellar, ortida
+   kompaniyaning AI miyasi kabi suzib yuruvchi kobalt va yalpiz nurlar.
+   ===================================================================== */
+:root{
+  --bg:#050816;
+  --card:rgba(255,255,255,.055);--card2:rgba(255,255,255,.085);--bg2:rgba(255,255,255,.035);
+  --line:rgba(255,255,255,.11);--line2:rgba(255,255,255,.18);
+  --input:rgba(255,255,255,.06);--nav:rgba(8,12,30,.42);--hover:rgba(255,255,255,.12);
+  --glass-hi:rgba(255,255,255,.16);--glass-blur:18px;
+  --sh:inset 0 1px 0 rgba(255,255,255,.10),0 24px 48px -24px rgba(0,0,0,.7);
+  --aur1:rgba(79,107,255,.55);--aur2:rgba(33,201,154,.38);--aur3:rgba(56,189,248,.30);
+}
+:root[data-theme=light]{
+  --bg:#e9eefb;
+  --card:rgba(255,255,255,.52);--card2:rgba(255,255,255,.68);--bg2:rgba(255,255,255,.38);
+  --line:rgba(255,255,255,.75);--line2:rgba(20,30,70,.12);
+  --input:rgba(255,255,255,.7);--nav:rgba(255,255,255,.5);--hover:rgba(255,255,255,.85);
+  --glass-hi:rgba(255,255,255,.9);
+  --sh:inset 0 1px 0 rgba(255,255,255,.9),0 18px 40px -22px rgba(30,45,110,.35);
+  --aur1:rgba(79,107,255,.42);--aur2:rgba(33,201,154,.32);--aur3:rgba(56,189,248,.30);
+}
+html{background:var(--bg)}body{background:transparent}
+/* Aurora fon — barcha sahifalarda */
+body::before,body::after{content:'';position:fixed;z-index:-3;pointer-events:none;border-radius:50%;filter:blur(70px);will-change:transform}
+body::before{width:60vmax;height:60vmax;left:-12vmax;top:-18vmax;background:radial-gradient(circle,var(--aur1),transparent 65%);animation:aurA 22s ease-in-out infinite alternate}
+body::after{width:55vmax;height:55vmax;right:-10vmax;bottom:-16vmax;background:radial-gradient(circle,var(--aur2),transparent 65%),radial-gradient(circle at 20% 20%,var(--aur3),transparent 55%);animation:aurB 26s ease-in-out infinite alternate}
+@keyframes aurA{to{transform:translate3d(18vmax,12vmax,0) scale(1.15)}}
+@keyframes aurB{to{transform:translate3d(-16vmax,-10vmax,0) scale(1.1)}}
+.mesh{opacity:.55}
+
+/* Shisha yuzalar */
+.card,.side,.nav,.bottom-nav,.toast,.col,.seg,.tabs,.chat form,.notif,.mock .win,.marquee,.price,.story .st,.nums>div,.theme-btn,.kanban .col{
+  backdrop-filter:blur(var(--glass-blur)) saturate(160%);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(160%)}
+.card,.mock .win,.price,.story .st,.nums>div{
+  background:linear-gradient(140deg,var(--card2),var(--card) 55%,var(--bg2));
+  border:1px solid var(--line);box-shadow:var(--sh)}
+.card::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(140deg,var(--glass-hi),transparent 30%);opacity:.35;mix-blend-mode:overlay}
+.card{position:relative}
+.side{background:var(--nav);border-right:1px solid var(--line)}
+.nav{background:var(--nav)}
+.col{background:var(--bg2);border:1px solid var(--line)}
+.task{background:var(--card2);border:1px solid var(--line);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.bubble.ai{background:var(--card2);border:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.chat form{background:var(--bg2)}
+input,select,textarea{background:var(--input);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.modal-bg{background:rgba(3,6,18,.45);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+:root[data-theme=light] .modal-bg{background:rgba(220,228,250,.45)}
+.btn{box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 8px 20px -10px rgba(79,107,255,.8)}
+.btn.sec,.btn.ghost{background:var(--card2);border-color:var(--line);box-shadow:inset 0 1px 0 var(--glass-hi);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.btn.sec:hover,.btn.ghost:hover{background:var(--hover)}
+.btn.ok{box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 8px 20px -10px rgba(33,201,154,.8)}
+.side .menu button.on{background:linear-gradient(90deg,rgba(79,107,255,.35),rgba(79,107,255,.08));box-shadow:inset 0 0 0 1px rgba(157,176,255,.25)}
+:root[data-theme=light] .side .menu button.on{color:#1e2f8f}
+.assist{background:linear-gradient(140deg,rgba(79,107,255,.22),var(--card) 60%)!important;border-color:rgba(157,176,255,.35)!important}
+.stat .bar{background:rgba(255,255,255,.12)}
+.av{background:var(--card2);border-color:var(--line)}
+.badge{backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.cam{border:1px solid var(--line2);box-shadow:0 30px 60px -30px rgba(0,0,0,.7)}
+.mod .ic,.mode-cards .ic,.assist .sg .ic{box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+.code-big{background:var(--bg2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+table th{background:transparent}
+.landing .card::before{background:radial-gradient(360px circle at var(--mx,50%) var(--my,50%),rgba(157,176,255,.22),transparent 60%)}
+.cta{background:radial-gradient(500px 240px at 80% 20%,rgba(33,201,154,.35),transparent),linear-gradient(135deg,rgba(40,60,190,.85),rgba(15,26,77,.85));backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 30px 60px -30px rgba(20,30,110,.8)}
+/* Telefonda yengilroq blur (tezlik uchun) */
+@media (max-width:700px){:root{--glass-blur:12px}.card::after{display:none}body::before,body::after{filter:blur(50px)}}
+/* Shaffoflikni yoqtirmaydiganlar yoki eski brauzer */
+@media (prefers-reduced-transparency:reduce){:root{--card:#121a33;--card2:#18213f;--bg2:#0d1428;--nav:#0b1122}:root[data-theme=light]{--card:#fff;--card2:#f4f6fb;--bg2:#eef1f8;--nav:#fff}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){:root{--card:#121a33;--card2:#18213f;--bg2:#0d1428;--nav:#0b1122}:root[data-theme=light]{--card:#fff;--card2:#f4f6fb;--bg2:#eef1f8;--nav:#fff}}
+@media (prefers-reduced-motion:reduce){body::before,body::after{animation:none}}
+:root[data-theme=light] th,:root[data-theme=light] td,:root[data-theme=light] .list-item,:root[data-theme=light] .line,:root[data-theme=light] .post,:root[data-theme=light] .ev,:root[data-theme=light] .assist .sg{border-color:rgba(20,30,70,.09)}
+:root[data-theme=light] .card,:root[data-theme=light] .price,:root[data-theme=light] .story .st,:root[data-theme=light] .nums>div{border-color:rgba(255,255,255,.8)}
+
+.mock .phone,.mock .phone .muted{color:#fff}.mock .phone .muted{opacity:.7}

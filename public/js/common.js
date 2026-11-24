@@ -8,15 +8,31 @@ const WR = (() => {
   const session = (code) => store.get('wr:' + code) || {};
   const setSession = (code, s) => { store.set('wr:' + code, { ...session(code), ...s }); store.set('wr:last', code); };
 
+  // API: vaqt chegarasi + server uyg'onayotganda (Render bepul tarifi) avtomatik qayta urinish
+  let wakeToast = false;
   async function api(path, opts = {}, code) {
     const s = code ? session(code) : {};
-    const headers = { ...(opts.body && !(opts.body instanceof Blob) ? { 'Content-Type': 'application/json' } : {}), ...(opts.headers || {}) };
+    const isBlob = opts.body instanceof Blob;
+    const headers = { ...(opts.body && !isBlob ? { 'Content-Type': 'application/json' } : {}), ...(opts.headers || {}) };
     if (s.adminKey) headers['x-admin-key'] = s.adminKey;
     if (s.empKey) headers['x-emp-key'] = s.empKey;
-    const res = await fetch(path, { ...opts, headers, body: opts.body && !(opts.body instanceof Blob) && typeof opts.body !== 'string' ? JSON.stringify(opts.body) : opts.body });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j.error || 'Xatolik: ' + res.status);
-    return j;
+    const body = opts.body && !isBlob && typeof opts.body !== 'string' ? JSON.stringify(opts.body) : opts.body;
+    const long = isBlob || /analyze|mentor|brief|diag/.test(path);
+    for (let attempt = 0; ; attempt++) {
+      let res;
+      try {
+        res = await fetch(path, { ...opts, headers, body, signal: AbortSignal.timeout ? AbortSignal.timeout(long ? 180000 : 30000) : undefined });
+      } catch (e) {
+        if (attempt < 4 && !isBlob) { if (!wakeToast) { wakeToast = true; toast('Server uyg‘onmoqda… bir necha soniya kuting', 6000); } await new Promise((r) => setTimeout(r, 2500 * (attempt + 1))); continue; }
+        throw new Error(e.name === 'TimeoutError' ? 'Server javob bermadi. Internetni tekshirib, qayta urinib ko‘ring.' : 'Internet aloqasi yo‘q yoki server ishlamayapti.');
+      }
+      if ([502, 503, 504].includes(res.status) && attempt < 4) { if (!wakeToast) { wakeToast = true; toast('Server uyg‘onmoqda… bir necha soniya kuting', 6000); } await new Promise((r) => setTimeout(r, 3000 * (attempt + 1))); continue; }
+      wakeToast = false;
+      const j = await res.json().catch(() => ({}));
+      if (res.status === 429) throw new Error(j.error || 'Juda ko‘p urinish. Biroz kuting.');
+      if (!res.ok) throw new Error(j.error || 'Xatolik: ' + res.status);
+      return j;
+    }
   }
   function toast(msg, ms = 3000) {
     const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
@@ -73,7 +89,7 @@ const WR = (() => {
   // Kun / tun rejimi
   function applyTheme(t) {
     document.documentElement.dataset.theme = t;
-    const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = t === 'light' ? '#f4f6fb' : '#070b17';
+    const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = t === 'light' ? '#e9eefb' : '#050816';
   }
   function toggleTheme(ev) {
     const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';

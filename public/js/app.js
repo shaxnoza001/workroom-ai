@@ -26,6 +26,7 @@ async function boot() {
     if (j.pending) return pendingScreen(j);
     S.me = (S.room.employees || []).find((e) => e.id === j.me) || null;
   } catch (e) {
+    if (/topilmadi/i.test(e.message)) { WR.store.del('wr:' + CODE); if (WR.store.get('wr:last') === CODE) WR.store.del('wr:last'); }
     $('#view').innerHTML = `<div class="card center" style="max-width:460px;margin:60px auto"><h2>Room topilmadi</h2><p class="muted">${esc(e.message)}</p><a class="btn" style="margin-top:14px" href="/#join">Bosh sahifa</a></div>`;
     return;
   }
@@ -200,7 +201,10 @@ async function kiosk() {
   const clock = setInterval(() => { const c = $('#clock'); if (c) c.textContent = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit' }); }, 1000);
   let alive = true, busy = false, cooldown = 0, streak = 0;
   const ab = new AbortController();
-  S.cleanup = () => { alive = false; ab.abort(); clearInterval(clock); Face.stopCam(S.stream); };
+  let wake = null; try { wake = await navigator.wakeLock.request('screen'); } catch (_) {}
+  const reWake = async () => { if (document.visibilityState === 'visible' && alive) try { wake = await navigator.wakeLock.request('screen'); } catch (_) {} };
+  document.addEventListener('visibilitychange', reWake);
+  S.cleanup = () => { alive = false; ab.abort(); clearInterval(clock); Face.stopCam(S.stream); document.removeEventListener('visibilitychange', reWake); if (wake) wake.release().catch(() => {}); };
   const msg = (t) => { const m = $('#k-msg'); if (m) m.textContent = t; };
   const show = (html, cls, ms = 3500) => {
     const r = $('#k-res'); if (!r) return;
@@ -210,6 +214,7 @@ async function kiosk() {
   try { await Face.load(); if (!alive) return; S.stream = await Face.startCam($('#k-video')); if (!alive) return Face.stopCam(S.stream); }
   catch (e) { if (alive) msg(e.message); return; }
   msg('Kameraga qarang');
+  $('.kcam').onclick = () => $('#k-video').play().catch(() => {});
   const video = $('#k-video'), canvas = $('#k-canvas');
   const loop = async () => {
     if (!alive) return;
