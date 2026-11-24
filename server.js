@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_BASE = process.env.GEMINI_BASE || 'https://generativelanguage.googleapis.com';
 const GEMINI_MODEL_ENV = (process.env.GEMINI_MODEL || '').trim();
 const AI = { model: GEMINI_MODEL_ENV || '', ok: null, error: '', at: 0, models: [] };
 const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -527,7 +528,7 @@ Vazifa: 1) qisqa xulosa (3-5 gap), 2) qabul qilingan qarorlar, 3) aniq vazifalar
 // Gemini modelini avtomatik tanlash: kalitga ochiq eng yangi "flash" modeli (eski model o'chirilsa ham ishlayveradi)
 async function resolveModel(force) {
   if (AI.model && !force) return AI.model;
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': GEMINI_API_KEY }, signal: AbortSignal.timeout(20000) });
+  const r = await fetch(GEMINI_BASE + '/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': GEMINI_API_KEY }, signal: AbortSignal.timeout(20000) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error((j.error && j.error.message) || 'Gemini: ' + r.status);
   const ok = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent')).map((m) => m.name.replace('models/', ''));
@@ -542,18 +543,36 @@ async function resolveModel(force) {
   if (!pick) throw new Error('Kalitingizga mos Gemini modeli topilmadi');
   return (AI.model = pick);
 }
-async function geminiCall(body, json, retried) {
-  let model;
-  try { model = await resolveModel(); } catch (e) { AI.ok = false; AI.error = e.message; AI.at = Date.now(); throw e; }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY }, body: JSON.stringify(body), signal: AbortSignal.timeout(120000) });
-  const j = await resp.json().catch(() => ({}));
-  if (!resp.ok) {
-    const msg = (j.error && j.error.message) || 'Gemini ' + resp.status;
-    if (!retried && (resp.status === 404 || /not found|not supported|deprecated/i.test(msg))) { AI.model = ''; await resolveModel(true).catch(() => {}); return geminiCall(body, json, true); }
-    AI.ok = false; AI.error = msg; AI.at = Date.now();
-    throw new Error(msg);
+// Band/ishlamayotgan model bo'lsa — qolgan Flash modellariga navbat bilan o'tadi
+function fallbackModels(primary) {
+  const ver = (n) => { const m = n.match(/gemini-(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
+  const ok = AI.models.filter((n) => /flash/.test(n) && !/(image|live|tts|audio|embed|exp|thinking)/.test(n));
+  const full = ok.filter((n) => !/lite/.test(n)).sort((x, y) => ver(y) - ver(x) || x.length - y.length);
+  const lite = ok.filter((n) => /lite/.test(n)).sort((x, y) => ver(y) - ver(x) || x.length - y.length);
+  return [primary, ...full, ...lite].filter((n, i, arr) => n && arr.indexOf(n) === i).slice(0, 5);
+}
+const BUSY = /high demand|overloaded|unavailable|try again later|resource.?exhausted|quota|rate limit|503|429|500|internal/i;
+async function geminiCall(body, json) {
+  let primary;
+  try { primary = await resolveModel(); } catch (e) { AI.ok = false; AI.error = e.message; AI.at = Date.now(); throw e; }
+  const tries = fallbackModels(primary);
+  let lastErr = 'Gemini javob bermadi', j = null;
+  for (let i = 0; i < tries.length; i++) {
+    const model = tries[i];
+    const url = `${GEMINI_BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    let resp;
+    try { resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY }, body: JSON.stringify(body), signal: AbortSignal.timeout(90000) }); }
+    catch (e) { lastErr = e.name === 'TimeoutError' ? 'Gemini javob bermadi (vaqt tugadi)' : e.message; continue; }
+    j = await resp.json().catch(() => ({}));
+    if (resp.ok) { if (model !== primary) { console.log(`Gemini: ${primary} band — ${model} ishlatildi`); AI.model = model; } AI.used = model; break; }
+    lastErr = (j.error && j.error.message) || 'Gemini ' + resp.status;
+    if (resp.status === 404 || /not found|not supported|deprecated/i.test(lastErr)) { if (i === 0) AI.model = ''; continue; }
+    if (resp.status === 400 && !BUSY.test(lastErr)) break; // so'rov xatosi — boshqa model ham yordam bermaydi
+    if (resp.status === 401 || resp.status === 403) break; // kalit xatosi
+    if (BUSY.test(lastErr) || resp.status >= 500 || resp.status === 429) { await new Promise((r) => setTimeout(r, 600 * (i + 1))); continue; }
+    break;
   }
+  if (!j || j.error || !j.candidates) { AI.ok = false; AI.error = lastErr; AI.at = Date.now(); throw new Error(lastErr); }
   AI.ok = true; AI.error = ''; AI.at = Date.now();
   const cand = j.candidates && j.candidates[0];
   const out = ((cand && cand.content && cand.content.parts) || []).filter((p) => !p.thought).map((p) => p.text || '').join('').trim();
@@ -1079,7 +1098,7 @@ app.post('/api/rooms/:code/diag', limit('diag', 10, 600000), async (req, res, ne
     const r = getRoom(req, res); if (!r || !requireAdmin(req, res, r)) return;
     const out = { gemini: { configured: !!GEMINI_API_KEY }, telegram: { configured: !!TG_TOKEN }, storage: { dir: DATA_DIR, persistent: !!process.env.DATA_DIR }, url: PUBLIC_URL };
     if (GEMINI_API_KEY) {
-      try { const t = await geminiCall({ contents: [{ role: 'user', parts: [{ text: 'Faqat "OK" deb javob ber.' }] }] }, false); out.gemini = { configured: true, ok: true, model: AI.model, reply: t.slice(0, 40) }; }
+      try { const t = await geminiCall({ contents: [{ role: 'user', parts: [{ text: 'Faqat "OK" deb javob ber.' }] }] }, false); out.gemini = { configured: true, ok: true, model: AI.used || AI.model, reply: t.slice(0, 40), models: fallbackModels(AI.model).length }; }
       catch (e) { out.gemini = { configured: true, ok: false, model: AI.model, error: e.message }; }
     }
     if (TG_TOKEN) {
