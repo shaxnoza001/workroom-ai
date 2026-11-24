@@ -173,7 +173,11 @@ async function sendAbsence(empId) {
 }
 function attLine(a) {
   const e = emp(a.empId) || { name: a.name };
-  return `<div class="list-item">${avatar(e)}<div class="grow">${esc(a.name)}<div class="small muted">${a.type === 'in' ? 'Keldi' : 'Ketdi'} · ${a.time}${a.lateMin ? ` · ${a.lateMin} daq kechikish` : ''}</div></div>${statusBadge(a.status)}</div>`;
+  return `<div class="list-item" data-a="${a.id}">${avatar(e)}<div class="grow">${esc(a.name)}<div class="small muted">${a.type === 'in' ? 'Keldi' : 'Ketdi'} · ${a.time}${a.lateMin ? ` · ${a.lateMin} daq kechikish` : ''}</div></div>${statusBadge(a.status)}${S.admin ? `<button class="icon-btn" title="Noto‘g‘ri yozuvni o‘chirish" onclick="delAtt('${a.id}')">${ic('trash')}</button>` : ''}</div>`;
+}
+async function delAtt(id) {
+  if (!confirm('Bu davomat yozuvi o‘chirilsinmi?')) return;
+  try { await api(`/api/rooms/${CODE}/attendance/${id}`, { method: 'DELETE' }, CODE); document.querySelectorAll(`[data-a="${id}"]`).forEach((x) => x.remove()); toast('O‘chirildi'); } catch (e) { toast(e.message); }
 }
 function taskLine(t) {
   return `<div class="list-item"><div class="grow"><b>${esc(t.title)}</b><div class="small muted">${ic('users')} ${esc(t.assigneeName || '—')}${t.deadline ? ' · ' + ic('calendar') + ' ' + esc(t.deadline) : ''}</div></div><span class="badge ${t.status === 'bajarildi' ? 'ok' : t.status === 'jarayonda' ? 'warn' : ''}">${t.status}</span></div>`;
@@ -181,58 +185,67 @@ function taskLine(t) {
 
 // ---------- FACE ID KIOSK ----------
 async function kiosk() {
+  let mode = 'auto';
+  const live = S.room.liveness !== false;
   $('#view').innerHTML = `
     <div class="kiosk">
-      <div class="top"><h1>Face ID davomat</h1><span class="muted" id="clock"></span></div>
-      <p class="muted small" style="margin-bottom:12px">${S.admin ? 'Bu qurilmani ofis kirishiga qo‘ying — kelgan har bir xodim kameraga qaraydi. Ikkinchi marta qarasa — “ketdi” bo‘ladi.' : 'Kameraga qarang — davomatingiz avtomatik belgilanadi.'}</p>
-      <div class="cam"><video id="k-video"></video><canvas id="k-canvas"></canvas><div class="ring" id="k-ring"></div><div class="scan-line"></div><div class="msg" id="k-msg">Face ID modeli yuklanmoqda…</div></div>
-      <div class="greet" id="k-greet"></div>
+      <div class="top"><div><h1>Face ID davomat</h1><div class="sub">${S.admin ? 'Ofis kirishidagi qurilma. Har bir xodim kameraga qaraydi.' : 'Kameraga qarang — o‘zingizni belgilaysiz.'}</div></div><div class="clock" id="clock"></div></div>
+      <div class="seg" id="k-mode">${[['auto', 'Avto'], ['in', 'Keldim'], ['out', 'Ketdim']].map(([k, t]) => `<button data-m="${k}" class="${k === mode ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <div class="cam kcam"><video id="k-video"></video><canvas id="k-canvas"></canvas><div class="ring" id="k-ring"></div><div class="scan-line"></div>
+        <div class="kres hidden" id="k-res"></div><div class="msg" id="k-msg">Face ID yuklanmoqda…</div></div>
+      <p class="small muted center" style="margin-top:10px">${live ? 'Xavfsizlik: tanishdan oldin boshingizni sekin yon tomonga burasiz — rasm yoki telefon ekrani o‘tmaydi.' : 'Tirik yuz tekshiruvi o‘chirilgan (Sozlamalar).'} “Avto”: birinchi qarash — keldi, 3 soatdan keyin — ketdi.</p>
       ${S.admin ? '<div class="card" style="margin-top:14px"><h3>Oxirgi belgilanganlar</h3><div id="k-log"></div></div>' : ''}
     </div>`;
-  const clock = setInterval(() => { const c = $('#clock'); if (c) c.textContent = new Date().toLocaleTimeString('uz-UZ', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit' }); }, 1000);
+  $$('#k-mode button').forEach((b) => (b.onclick = () => { mode = b.dataset.m; $$('#k-mode button').forEach((x) => x.classList.toggle('on', x === b)); }));
+  const clock = setInterval(() => { const c = $('#clock'); if (c) c.textContent = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit' }); }, 1000);
   let alive = true, busy = false, cooldown = 0, streak = 0;
-  S.cleanup = () => { alive = false; clearInterval(clock); Face.stopCam(S.stream); };
+  const ab = new AbortController();
+  S.cleanup = () => { alive = false; ab.abort(); clearInterval(clock); Face.stopCam(S.stream); };
+  const msg = (t) => { const m = $('#k-msg'); if (m) m.textContent = t; };
+  const show = (html, cls, ms = 3500) => {
+    const r = $('#k-res'); if (!r) return;
+    r.className = 'kres ' + cls; r.innerHTML = html; cooldown = Date.now() + ms;
+    setTimeout(() => { const x = $('#k-res'); if (x) x.className = 'kres hidden'; }, ms - 200);
+  };
   try { await Face.load(); if (!alive) return; S.stream = await Face.startCam($('#k-video')); if (!alive) return Face.stopCam(S.stream); }
-  catch (e) { if (alive && $('#k-msg')) $('#k-msg').textContent = e.message; return; }
-  $('#k-msg').textContent = 'Kameraga qarang';
+  catch (e) { if (alive) msg(e.message); return; }
+  msg('Kameraga qarang');
   const video = $('#k-video'), canvas = $('#k-canvas');
   const loop = async () => {
     if (!alive) return;
     if (!busy && Date.now() > cooldown) {
       try {
-        const det = await Face.detect(video);
-        const q = det && Face.quality(video, det);
-        Face.draw(canvas, video, det, det && !q);
+        const det = await Face.detect(video, !live);
         if (!alive || !$('#k-msg')) return;
-        if (!det) { streak = 0; $('#k-msg').textContent = 'Kameraga qarang'; }
-        else if (q) { streak = 0; $('#k-msg').textContent = q; }
-        else if (++streak >= 3) { // 3 consecutive good frames
-          busy = true; streak = 0; $('#k-msg').textContent = 'Tekshirilmoqda…';
-          const r = await api(`/api/rooms/${CODE}/checkin`, { method: 'POST', body: { descriptor: Array.from(det.descriptor) } }, CODE);
-          if (!r.match) {
-            $('#k-greet').innerHTML = '<span style="color:var(--bad)">Tanilmadi.</span> <span class="small muted">Room’da ro‘yxatdan o‘tmagansiz yoki yorug‘lik kam.</span>';
-            cooldown = Date.now() + 2500;
-          } else {
-            $('#k-ring').classList.add('ok');
-            const rec = r.record;
-            if (r.notYou) {
-              $('#k-greet').innerHTML = `Bu yuz <b>${esc(r.employee.name)}</b>ga tegishli.`;
-            } else {
-              const word = r.repeat ? 'Allaqachon belgilangansiz' : rec.type === 'in' ? (rec.status === 'kechikdi' ? `Xush kelibsiz — ${rec.lateMin} daqiqa kechikdingiz` : 'Xush kelibsiz! O‘z vaqtida') : 'Xayr, yaxshi dam oling!';
-              $('#k-greet').innerHTML = `${esc(r.employee.name)} — ${word} <span class="muted small">(${rec.time}, ${r.confidence}%)</span>`;
-              speak(r.repeat ? '' : rec.type === 'in' ? `Xush kelibsiz, ${r.employee.name}` : `Xayr, ${r.employee.name}`);
-            }
-            cooldown = Date.now() + 4000;
-            setTimeout(() => { const g = $('#k-ring'); if (g) g.classList.remove('ok'); }, 1500);
+        const q = det && Face.quality(video, det);
+        Face.draw(canvas, video, det, det ? (q ? 'bad' : null) : null);
+        if (!det) { streak = 0; msg('Kameraga qarang'); }
+        else if (q) { streak = 0; msg(q); }
+        else if (++streak >= 2) {
+          busy = true; streak = 0;
+          let final = det;
+          if (live) { final = await Face.liveness(video, canvas, { onStatus: msg, signal: ab.signal }); if (!alive) return; }
+          if (!final || !final.descriptor) { msg('Tekshiruv o‘tmadi — qaytadan kameraga qarang'); busy = false; cooldown = Date.now() + 1200; setTimeout(loop, 150); return; }
+          msg('Tekshirilmoqda…');
+          const r = await api(`/api/rooms/${CODE}/checkin`, { method: 'POST', body: { descriptor: Array.from(final.descriptor), mode } }, CODE);
+          if (!alive) return;
+          if (!r.match) show(`<div class="kbig">${ic('alert', 'xl')}</div><b>${r.ambiguous ? 'Aniq tanilmadi' : 'Tanilmadi'}</b><span>${r.ambiguous ? 'Ikki xodimga o‘xshadi — yaqinroq, yorug‘ joyda qayta qarang' : 'Bu yuz Room’da ro‘yxatda yo‘q'}</span>`, 'bad', 2600);
+          else if (r.notYou) show(`<div class="kbig">${ic('alert', 'xl')}</div><b>Bu siz emassiz</b><span>Bu yuz ${esc(r.employee.name)}ga tegishli</span>`, 'bad', 2600);
+          else {
+            const rec = r.record, e = r.employee;
+            const title = r.repeat ? 'Allaqachon belgilangan' : rec.type === 'in' ? (rec.status === 'kechikdi' ? `Xush kelibsiz! ${rec.lateMin} daqiqa kechikdingiz` : 'Xush kelibsiz! O‘z vaqtida') : rec.status === 'erta ketdi' ? 'Erta ketish belgilandi' : 'Xayr, yaxshi dam oling!';
+            show(`${avatar(e, 84)}<b>${esc(e.name)}</b><span class="badge ${r.repeat ? 'ghost' : rec.status === 'keldi' || rec.status === 'ketdi' ? 'ok' : 'warn'}">${esc(title)}</span><span class="muted">${rec.type === 'in' ? 'Keldi' : 'Ketdi'} · ${rec.time}${r.hint ? '<br>' + esc(r.hint) : ''}</span>`, r.repeat ? 'info' : 'ok', r.hint ? 5000 : 3500);
+            if (!r.repeat) speak(rec.type === 'in' ? `Xush kelibsiz, ${e.name}` : `Xayr, ${e.name}`);
+            if (S.admin && !r.repeat) { const l = $('#k-log'); if (l) { const o = l.querySelector(`[data-a="${rec.id}"]`); if (o) o.remove(); l.insertAdjacentHTML('afterbegin', attLine(rec)); } }
           }
-          busy = false;
+          msg('Kameraga qarang'); busy = false;
         }
-      } catch (e) { busy = false; if ($('#k-msg')) $('#k-msg').textContent = e.message; cooldown = Date.now() + 2000; }
+      } catch (e) { busy = false; msg(e.message); cooldown = Date.now() + 2000; }
     }
-    setTimeout(() => requestAnimationFrame(loop), 120);
+    setTimeout(() => requestAnimationFrame(loop), 90);
   };
   loop();
-  if (S.admin) { const att = await loadAtt(); if (!$('#k-log')) return; $('#k-log').innerHTML = att.slice(-6).reverse().map(attLine).join('') || '<p class="muted small">—</p>'; }
+  if (S.admin) { const att = await loadAtt(); const l = $('#k-log'); if (l) l.innerHTML = att.slice(-6).reverse().map(attLine).join('') || '<p class="muted small">—</p>'; }
 }
 function speak(t) { try { if (!t) return; const u = new SpeechSynthesisUtterance(t); u.lang = 'uz-UZ'; u.rate = 1; speechSynthesis.speak(u); } catch (_) {} }
 
@@ -266,7 +279,7 @@ async function saveEmp(scan) {
 function editEmp(id) {
   const e = emp(id);
   modal(`<h2>Tahrirlash</h2><label>Ism</label><input id="e-name" value="${esc(e.name)}"><label>Lavozim</label><input id="e-role" value="${esc(e.role)}"><label>Maosh</label><input id="e-sal" type="number" value="${e.salary}">
-  <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn sec" onclick="closeModal()">Bekor</button><button class="btn" onclick="updEmp('${id}')">Saqlash</button></div>`);
+  <div class="row" style="margin-top:16px;justify-content:space-between">${e.hasFace ? `<button class="btn ghost sm" onclick="delFace('${id}')">${ic('trash')} Face ID’ni o‘chirish</button>` : '<span></span>'}<div class="row"><button class="btn sec" onclick="closeModal()">Bekor</button><button class="btn" onclick="updEmp('${id}')">Saqlash</button></div></div>`);
 }
 async function updEmp(id) {
   try { await api(`/api/rooms/${CODE}/employees/${id}`, { method: 'PATCH', body: { name: $('#e-name').value, role: $('#e-role').value, salary: $('#e-sal').value } }, CODE); closeModal(); await refreshRoom(); people(); }
@@ -279,6 +292,7 @@ async function inviteLink(id) {
     modal(`<h2>Shaxsiy kirish havolasi</h2><p class="small muted" style="margin-top:6px">Faqat ${esc(emp(id).name)}ga yuboring (Telegram shaxsiy xabarda). Bu havola uning parolidek.</p><input readonly id="inv-url" value="${esc(url)}" style="margin-top:12px" onclick="this.select()"><div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn sec" onclick="closeModal()">Yopish</button><button class="btn" onclick="navigator.clipboard.writeText($('#inv-url').value).then(()=>toast('Nusxalandi'))">${ic('link')} Nusxalash</button></div>`);
   } catch (e) { toast(e.message); }
 }
+async function delFace(id) { if (!confirm('Bu xodimning Face ID ma’lumoti o‘chirilsinmi? Keyin qayta skaner qilasiz.')) return; await api(`/api/rooms/${CODE}/employees/${id}/face`, { method: 'DELETE' }, CODE); closeModal(); await refreshRoom(); people(); toast('Face ID o‘chirildi — endi qayta skaner qiling'); }
 async function delEmp(id) { if (!confirm('O‘chirilsinmi?')) return; await api(`/api/rooms/${CODE}/employees/${id}`, { method: 'DELETE' }, CODE); await refreshRoom(); people(); }
 async function refreshRoom() { S.room = (await api('/api/rooms/' + CODE, {}, CODE)).room; if (S.me) S.me = emp(S.me.id); }
 
@@ -424,9 +438,11 @@ function settings() {
         <h3 style="margin-top:22px">AI Assistant</h3>
         <label>Ish boshlanganidan necha daqiqa o‘tib kelmaganlar tekshirilsin</label><input id="s-grace" type="number" min="5" max="180" value="${S.room.graceMin}">
         <label class="switch"><input type="checkbox" id="s-auto" ${S.room.autopilot ? 'checked' : ''}> Avtopilot: o‘rinbosarni tasdiqsiz o‘zi tayinlasin</label>
+        <p class="small muted" style="margin-top:6px">O‘chiq bo‘lsa — AI taklif qiladi, siz saytda yoki Telegram’da bir bosishda tasdiqlaysiz.</p>
         <h3 style="margin-top:22px">Xavfsizlik</h3>
         <label class="switch"><input type="checkbox" id="s-appr" ${S.room.requireApproval !== false ? 'checked' : ''}> Kod bilan kirganlarni men tasdiqlayman (tavsiya etiladi)</label>
-        <p class="small muted" style="margin-top:6px">O‘chiq bo‘lsa — AI taklif qiladi, siz saytda yoki Telegram’da bir bosishda tasdiqlaysiz.</p>
+        <label class="switch"><input type="checkbox" id="s-live" ${S.room.liveness !== false ? 'checked' : ''}> Face ID’da tirik yuz tekshiruvi (boshni burish) — rasm bilan aldashdan himoya</label>
+
         <button class="btn" style="margin-top:14px" onclick="saveSettings()">Saqlash</button></div>
       <div class="card"><h3>Telegram bot</h3>
         <p class="muted small" style="margin-top:6px">Holat: ${S.room.telegramLinked ? '<span class="badge ok">ulangan</span>' : '<span class="badge warn">ulanmagan</span>'}</p>
@@ -435,11 +451,28 @@ function settings() {
         <p class="small muted">Shundan so‘ng: har bir kelgan/ketgan xodim, ish boshlanganidan 30 daqiqa o‘tib “kim kelmadi” hisoboti va yangi vazifalar botga keladi. <b>/hisobot</b> — istalgan payt.</p></div>
       <div class="card"><h3>Admin havolasi</h3><p class="muted small" style="margin-top:6px">Boshqa qurilmadan (telefoningizdan) admin sifatida kirish uchun. Hech kimga bermang!</p>
         <button class="btn sec" style="margin-top:12px" onclick="navigator.clipboard.writeText('${location.origin}/room/${CODE}#admin=${s.adminKey}').then(()=>toast('Nusxalandi'))">${ic('link')} Admin havolasini nusxalash</button></div>
+      <div class="card"><h3>Rahbar paroli</h3><p class="muted small" style="margin-top:6px">${S.room.hasPassword ? 'Parol o‘rnatilgan.' : '<b style="color:var(--warn)">Parol o‘rnatilmagan</b> — boshqa qurilmadan kirish uchun qo‘ying.'} Kirish: bosh sahifa → Roomga kirish → Rahbarman → kod + parol.</p>
+        <div class="row" style="margin-top:10px;flex-wrap:nowrap"><input id="s-pw" type="password" autocomplete="new-password" placeholder="Yangi parol (kamida 6 belgi)"><button class="btn" onclick="savePw()">Saqlash</button></div></div>
+      <div class="card" style="grid-column:1/-1"><div class="row between"><h3>Tizim holati</h3><button class="btn sec sm" id="diag-btn" onclick="runDiag()">${ic('zap')} Tekshirish</button></div><div id="diag" class="small muted" style="margin-top:8px">Gemini (AI Mentor, Meeting AI) va Telegram bot ishlayaptimi — “Tekshirish”ni bosing.</div></div>
       <div class="card"><h3>Xodimlar uchun</h3><p class="muted small" style="margin-top:6px">Kompaniya kodi:</p><div class="code-big">#${CODE}</div></div>
     </div>`;
 }
+async function savePw() { try { await api(`/api/rooms/${CODE}/password`, { method: 'POST', body: { password: $('#s-pw').value } }, CODE); S.room.hasPassword = true; toast('Parol saqlandi'); settings(); } catch (e) { toast(e.message); } }
+async function runDiag() {
+  const el = $('#diag'), b = $('#diag-btn'); b.disabled = true; el.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+  try {
+    const d = await api(`/api/rooms/${CODE}/diag`, { method: 'POST' }, CODE);
+    const row = (ok, title, text) => `<div class="list-item"><span class="badge ${ok === true ? 'ok' : ok === false ? 'bad' : 'warn'}">${ok === true ? 'ishlayapti' : ok === false ? 'xato' : 'sozlanmagan'}</span><div class="grow"><b style="color:var(--text)">${title}</b><div>${text}</div></div></div>`;
+    const g = d.gemini, t = d.telegram;
+    el.innerHTML =
+      row(g.configured ? g.ok : null, 'Gemini AI', !g.configured ? 'Render → Environment’ga <code>GEMINI_API_KEY</code> qo‘shing.' : g.ok ? `Model: ${esc(g.model)} · javob: “${esc(g.reply)}”` : `${esc(g.error || '')}<br>Kalitni aistudio.google.com/apikey’dan qayta oling va Render’da yangilang.`) +
+      row(t.configured ? t.ok && !t.error && !t.webhookError : null, 'Telegram bot', !t.configured ? 'Render → Environment’ga <code>TELEGRAM_BOT_TOKEN</code> qo‘shing.' : `${t.username ? '@' + esc(t.username) + ' · ' : ''}rejim: ${esc(t.mode)} · ${t.linked ? 'guruh ulangan' : '<b>hali ulanmagan</b> — pastdagi /ulash buyrug‘ini botga yuboring'}${t.error ? '<br>Xato: ' + esc(t.error) : ''}${t.webhookError ? '<br>Webhook: ' + esc(t.webhookError) : ''}`) +
+      row(d.storage.persistent ? true : null, 'Ma’lumotlar saqlanishi', d.storage.persistent ? 'Doimiy disk ulangan' : 'Vaqtinchalik (bepul tarif): server qayta ishga tushsa ma’lumotlar o‘chadi');
+  } catch (e) { el.textContent = e.message; }
+  b.disabled = false;
+}
 async function saveSettings() {
-  try { const j = await api(`/api/rooms/${CODE}/settings`, { method: 'PATCH', body: { company: $('#s-co').value, workStart: $('#s-start').value, workEnd: $('#s-end').value, lateFine: $('#s-fine').value, graceMin: $('#s-grace').value, autopilot: $('#s-auto').checked, requireApproval: $('#s-appr').checked } }, CODE); S.room = j.room; toast('Saqlandi ✓'); }
+  try { const j = await api(`/api/rooms/${CODE}/settings`, { method: 'PATCH', body: { company: $('#s-co').value, workStart: $('#s-start').value, workEnd: $('#s-end').value, lateFine: $('#s-fine').value, graceMin: $('#s-grace').value, autopilot: $('#s-auto').checked, requireApproval: $('#s-appr').checked, liveness: $('#s-live').checked } }, CODE); S.room = j.room; toast('Saqlandi ✓'); }
   catch (e) { toast(e.message); }
 }
 
@@ -499,7 +532,7 @@ function kbFile(inp) { const f = inp.files[0]; if (!f) return; f.text().then((t)
 // ---------- Realtime ----------
 socket.on('attendance', (a) => {
   if (S.view === 'home' && S.admin) { const f = $('#feed'); if (f) home(); }
-  if (S.view === 'kiosk' && S.admin) { const l = $('#k-log'); if (l) l.insertAdjacentHTML('afterbegin', attLine(a)); }
+  if (S.view === 'kiosk' && S.admin) { const l = $('#k-log'); if (l) { const o = l.querySelector(`[data-a="${a.id}"]`); if (o) o.remove(); l.insertAdjacentHTML('afterbegin', attLine(a)); } }
   if (S.admin && S.view !== 'kiosk') toast(`${a.name} — ${a.status} (${a.time})`);
 });
 socket.on('employees', (list) => { if (S.room) S.room.employees = list; if (S.me) S.me = emp(S.me.id) || S.me; });

@@ -18,7 +18,7 @@ Kamera/mikrofon faqat `localhost` yoki **https** da ishlaydi (Render avtomatik h
 |---|---|
 | `GEMINI_API_KEY` | Meeting AI: audio + matnni tahlil qilib vazifalar chiqaradi. Bo‘lmasa — oddiy qoida bilan ishlaydi |
 | `SUPER_ADMIN_KEY` | Umumiy admin panel (`/admin`) kaliti — barcha ochilgan Room’lar, xodimlar va jonli faollikni ko‘rasiz. Uzun, tasodifiy so‘z qo‘ying |
-| `GEMINI_MODEL` | ixtiyoriy, standart `gemini-2.5-flash` |
+| `GEMINI_MODEL` | ixtiyoriy. Bo‘sh qoldiring — server kalitingizga ochiq eng yangi Gemini Flash modelini o‘zi tanlaydi |
 | `TELEGRAM_BOT_TOKEN` | @BotFather’dan. Kim keldi/kelmadi xabarlari |
 | `DATA_DIR` | Render **Disk** ulasangiz, masalan `/var/data` — ma’lumotlar o‘chib ketmaydi |
 | `TURN_URL`, `TURN_USER`, `TURN_PASS` | ixtiyoriy. Mobil internetda video ulanmasa (masalan, metered.ca bepul TURN) |
@@ -63,6 +63,14 @@ Kamera/mikrofon faqat `localhost` yoki **https** da ishlaydi (Render avtomatik h
 3. Environment’da `GEMINI_API_KEY` va `TELEGRAM_BOT_TOKEN`ni kiriting → **Deploy**.
 4. `SUPER_ADMIN_KEY` qiymatini Environment’dan oling — `/admin` sahifasining kaliti.
 > Bepul tarifda disk yo‘q: qayta ishga tushganda ma’lumot o‘chadi. Haqiqiy mijozlar uchun **Starter** tarif + disk shart.
+
+## v6 tuzatishlar
+- **Rahbar kirishi**: Room ochishda parol qo‘yiladi. Boshqa qurilmadan: bosh sahifa → Roomga kirish → **Rahbarman** → kod + parol. Umumiy platforma admini: `/admin` + `SUPER_ADMIN_KEY`.
+- **Kelish/ketish**: “Avto” rejimda kelgandan keyin 3 soat ichida qayta qarash “ketdi” bo‘lmaydi; kioskda **Keldim / Ketdim** tugmalari. Noto‘g‘ri yozuvni admin o‘chira oladi.
+- **Face ID**: aniqroq SSD detektor, “yuz” emas narsalar (kiyim, fon) rad etiladi, **tirik yuz** tekshiruvi (boshni yon tomonga burish), ikki xodimga o‘xshagan yuz qabul qilinmaydi, bir yuz ikki xodimga yozilmaydi. Noto‘g‘ri yozilgan Face ID’ni Xodimlar → ✎ → “Face ID’ni o‘chirish”.
+- **Gemini**: model avtomatik tanlanadi (eski model o‘chirilsa ham ishlaydi), xato sababi ko‘rinadi.
+- **Telegram**: Render’da **webhook** rejimi — bepul tarifda server uxlab qolsa ham bot xabari uni uyg‘otadi.
+- **Sozlamalar → Tizim holati**: Gemini va bot ishlayaptimi, xato bo‘lsa — sababi.
 
 ## Cheklovlar (keyingi bosqich)
 - Face ID’da “tirik yuz” tekshiruvi yo‘q — telefondagi rasmni ko‘rsatib aldash mumkin. Kioskni rahbar ko‘radigan joyga qo‘ying; keyin ko‘z qisish/bosh burish tekshiruvini qo‘shamiz.

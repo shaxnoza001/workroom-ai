@@ -1,9 +1,9 @@
-// Face ID inside the platform: works with any phone/laptop camera (no special hardware).
-// Uses face-api.js (runs in the browser; only 128-number face "fingerprint" is sent to server).
+// Face ID (brauzer ichida): SSD MobileNet detektor + 68 nuqta + 128 o'lchamli yuz izi.
+// Serverga rasm emas, faqat 128 ta raqam yuboriladi. "Tirik yuz" — boshni yon tomonga burish (rasm/kiyim o'tmaydi).
 const Face = (() => {
   const LIB = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/dist/face-api.js';
   const MODELS = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/model/';
-  let ready = null;
+  let ready = null, useSsd = true;
 
   function loadScript(src) {
     return new Promise((ok, fail) => {
@@ -14,47 +14,62 @@ const Face = (() => {
   function load() {
     if (!ready) ready = (async () => {
       if (!window.faceapi) await loadScript(LIB);
-      await Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(MODELS),
-        faceapi.nets.faceLandmark68Net.loadFromUri(MODELS),
-        faceapi.nets.faceRecognitionNet.loadFromUri(MODELS),
-      ]);
-    })();
+      try { await faceapi.nets.ssdMobilenetv1.loadFromUri(MODELS); } catch (_) { useSsd = false; await faceapi.nets.tinyFaceDetector.loadFromUri(MODELS); }
+      await Promise.all([faceapi.nets.faceLandmark68Net.loadFromUri(MODELS), faceapi.nets.faceRecognitionNet.loadFromUri(MODELS)]);
+    })().catch((e) => { ready = null; throw e; });
     return ready;
   }
   async function startCam(video) {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('Bu brauzer kamerani qo‘llamaydi. Chrome yoki Safari’dan oching (https kerak).');
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('Kamera ochilmadi. Saytni https orqali Chrome yoki Safari’da oching.');
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false }); }
+    catch (e) { throw new Error(e.name === 'NotAllowedError' ? 'Kameraga ruxsat berilmadi. Manzil satridagi kamera belgisidan ruxsat bering.' : 'Kamera topilmadi yoki band.'); }
     video.srcObject = stream; video.muted = true; video.playsInline = true;
     await video.play();
     return stream;
   }
   function stopCam(stream) { if (stream) stream.getTracks().forEach((t) => t.stop()); }
-  async function detect(video) {
+  const opts = () => (useSsd ? new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6, maxResults: 1 }) : new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.6 }));
+  async function detect(video, withDesc = true) {
     if (!video.videoWidth) return null;
-    return faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
-      .withFaceLandmarks().withFaceDescriptor();
+    const q = faceapi.detectSingleFace(video, opts()).withFaceLandmarks();
+    return withDesc ? q.withFaceDescriptor() : q;
   }
-  function draw(canvas, video, det, ok) {
+  // Bosh burilishi (yaw): 0 — to'g'ri, ±0.2 — yon tomonga burilgan
+  function yaw(det) {
+    const p = det.landmarks.positions;
+    const L = avg(p.slice(36, 42)), R = avg(p.slice(42, 48)), nose = p[30];
+    return (nose.x - L.x) / Math.max(1, R.x - L.x) - 0.5;
+  }
+  const avg = (pts) => ({ x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length });
+  // Yuz haqiqatan yuzmi va kadrga to'g'ri tushganmi
+  function quality(video, det) {
+    const b = det.detection.box, W = video.videoWidth, H = video.videoHeight, p = det.landmarks.positions;
+    if (det.detection.score < (useSsd ? 0.75 : 0.7)) return 'Yuz aniq ko‘rinmayapti — yorug‘roq joyga o‘ting';
+    if (b.width < W * 0.2) return 'Kameraga yaqinroq keling';
+    if (b.width > W * 0.8) return 'Biroz uzoqroq turing';
+    const ar = b.height / b.width; if (ar < 0.85 || ar > 1.7) return 'Kameraga to‘g‘ri qarang';
+    const L = avg(p.slice(36, 42)), R = avg(p.slice(42, 48)), nose = p[30], mouth = avg(p.slice(48, 68));
+    const eyeD = R.x - L.x;
+    if (eyeD < b.width * 0.25 || !(L.y < nose.y && R.y < nose.y && nose.y < mouth.y) || nose.x < L.x - eyeD * 0.3 || nose.x > R.x + eyeD * 0.3) return 'Kameraga to‘g‘ri qarang';
+    const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+    if (Math.abs(cx - W / 2) > W * 0.2 || Math.abs(cy - H / 2) > H * 0.24) return 'Yuzingizni oval markaziga keltiring';
+    return null;
+  }
+  // Toza ramka: faqat yuz burchaklari (nuqtalar yo'q)
+  function draw(canvas, video, det, state) {
     canvas.width = video.videoWidth; canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const cam = canvas.parentElement; if (cam) cam.classList.toggle('found', !!det);
     if (!det) return;
-    const b = det.detection.box;
-    ctx.strokeStyle = ok ? '#22d3a6' : '#5b7cff'; ctx.lineWidth = 3;
-    const r = 14; ctx.beginPath();
-    ctx.roundRect ? ctx.roundRect(b.x, b.y, b.width, b.height, r) : ctx.rect(b.x, b.y, b.width, b.height);
+    const b = det.detection.box, pad = b.width * 0.12;
+    const x = b.x - pad, y = b.y - pad * 1.3, w = b.width + pad * 2, h = b.height + pad * 2.2, L = Math.min(w, h) * 0.2;
+    ctx.strokeStyle = state === 'ok' ? '#21c99a' : state === 'bad' ? '#f5a524' : 'rgba(255,255,255,.9)';
+    ctx.lineWidth = Math.max(3, w * 0.018); ctx.lineCap = 'round';
+    ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = state === 'ok' ? 18 : 6;
+    ctx.beginPath();
+    [[x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1]].forEach(([px, py, sx, sy]) => { ctx.moveTo(px, py + sy * L); ctx.lineTo(px, py); ctx.lineTo(px + sx * L, py); });
     ctx.stroke();
-    ctx.fillStyle = ok ? '#22d3a6' : '#9fb2ff';
-    det.landmarks.positions.forEach((p, i) => { if (i % 3 === 0) { ctx.beginPath(); ctx.arc(p.x, p.y, 1.6, 0, 7); ctx.fill(); } });
-  }
-  // Quality gate: face big enough & roughly centered
-  function quality(video, det) {
-    const b = det.detection.box, W = video.videoWidth, H = video.videoHeight;
-    if (b.width < W * 0.18) return 'Yaqinroq keling';
-    const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
-    if (Math.abs(cx - W / 2) > W * 0.22 || Math.abs(cy - H / 2) > H * 0.25) return 'Yuzingizni doira markaziga keltiring';
-    if (det.detection.score < 0.7) return 'Yorug‘roq joyga o‘ting';
-    return null;
   }
   function snapshot(video, det) {
     const c = document.createElement('canvas'); const S = 160; c.width = S; c.height = S;
@@ -63,26 +78,44 @@ const Face = (() => {
     if (det) { const b = det.detection.box; const pad = b.width * 0.45; sw = sh = b.width + pad * 2; sx = b.x - pad; sy = b.y - pad * 1.1; }
     ctx.translate(S, 0); ctx.scale(-1, 1);
     ctx.drawImage(video, sx, sy, sw, sh, 0, 0, S, S);
-    return c.toDataURL('image/jpeg', 0.75);
+    return c.toDataURL('image/jpeg', 0.78);
   }
-  // Collect N good samples for enrollment
-  function enroll(video, canvas, { samples = 5, onStatus, onProgress, signal } = {}) {
+  const dist = (a, b) => Math.sqrt(a.reduce((s, v, i) => s + (v - b[i]) ** 2, 0));
+  const mean = (list) => list[0].map((_, i) => list.reduce((s, d) => s + d[i], 0) / list.length);
+
+  // Ro'yxatga olish: 3 ta to'g'ri + 2 ta biroz burilgan namuna, hammasi bitta yuzga tegishli bo'lishi tekshiriladi
+  function enroll(video, canvas, { onStatus, onProgress, signal } = {}) {
     return new Promise((resolve, reject) => {
-      const got = []; let photo = null; let lastT = 0;
+      let got = [], photo = null, lastT = 0, turned = 0;
       const tick = async () => {
         if (signal && signal.aborted) return reject(new Error('bekor'));
         try {
-          const det = await detect(video);
-          if (!det) { draw(canvas, video, null); onStatus && onStatus('Yuz topilmadi — kameraga qarang'); }
+          const det = await detect(video, true);
+          if (!det) { draw(canvas, video, null); onStatus && onStatus('Kameraga qarang'); }
           else {
-            const q = quality(video, det); draw(canvas, video, det, !q);
-            if (q) onStatus && onStatus(q);
-            else if (Date.now() - lastT > 350) {
+            const q = quality(video, det), y = yaw(det), front = got.length < 3;
+            let msg = null;
+            if (front) { if (q) msg = q; else if (Math.abs(y) > 0.1) msg = 'To‘g‘ri kameraga qarang'; }
+            else {
+              const qq = q && !/to‘g‘ri qarang/.test(q) ? q : null;
+              if (qq) msg = qq;
+              else if (Math.abs(y) < 0.08) msg = turned ? 'Endi boshqa tomonga sal burang' : 'Boshingizni sal chapga yoki o‘ngga burang';
+              else if (Math.abs(y) > 0.32) msg = 'Juda ko‘p burildi — sal kamroq';
+              else if (turned && Math.sign(y) === turned) msg = 'Endi boshqa tomonga sal burang';
+            }
+            draw(canvas, video, det, msg ? 'bad' : 'ok');
+            if (msg) onStatus && onStatus(msg);
+            else if (Date.now() - lastT > 300) {
+              if (!front) turned = Math.sign(y);
               lastT = Date.now(); got.push(Array.from(det.descriptor));
               if (!photo) photo = snapshot(video, det);
-              onProgress && onProgress(got.length / samples);
-              onStatus && onStatus(got.length < samples ? (got.length === 2 ? 'Boshingizni sal chapga-o‘ngga burang' : 'Skaner qilinmoqda…') : 'Tayyor ✓');
-              if (got.length >= samples) return resolve({ descriptors: got, photo });
+              onProgress && onProgress(got.length / 5);
+              onStatus && onStatus(got.length < 3 ? 'Skaner qilinmoqda… qimirlamang' : got.length < 5 ? 'Zo‘r! Endi boshingizni sal burang' : 'Tayyor ✓');
+              if (got.length >= 5) {
+                const m = mean(got);
+                if (got.some((d) => dist(d, m) > 0.42)) { got = []; photo = null; turned = 0; onProgress && onProgress(0); onStatus && onStatus('Sifat past — qaytadan, yorug‘roq joyda'); }
+                else return resolve({ descriptors: got, photo });
+              }
             }
           }
         } catch (e) { return reject(e); }
@@ -91,5 +124,30 @@ const Face = (() => {
       tick();
     });
   }
-  return { load, startCam, stopCam, detect, draw, quality, snapshot, enroll };
+  // Tirik yuz: to'g'ri → yon tomonga burish → yana to'g'ri. Oxirgi to'g'ri kadrning izi qaytadi.
+  function liveness(video, canvas, { onStatus, signal, timeout = 9000 } = {}) {
+    return new Promise((resolve) => {
+      const t0 = Date.now(); let phase = 0, lastBox = null;
+      const tick = async () => {
+        if ((signal && signal.aborted) || Date.now() - t0 > timeout) return resolve(null);
+        try {
+          const final = phase === 2;
+          const det = await detect(video, final);
+          if (!det) { draw(canvas, video, null); onStatus && onStatus('Yuzingizni kameradan uzoqlashtirmang'); }
+          else {
+            const b = det.detection.box;
+            if (lastBox && Math.abs(b.x - lastBox.x) > lastBox.width * 0.6) return resolve(null); // boshqa yuz
+            lastBox = b;
+            const y = yaw(det); draw(canvas, video, det, phase === 2 ? 'ok' : null);
+            if (phase === 0) { onStatus && onStatus('↔ Boshingizni sekin chapga yoki o‘ngga burang'); if (Math.abs(y) > 0.17) phase = 1; }
+            else if (phase === 1) { onStatus && onStatus('Endi yana kameraga to‘g‘ri qarang'); if (Math.abs(y) < 0.07) phase = 2; }
+            else if (det.descriptor && !quality(video, det)) return resolve(det);
+          }
+        } catch (_) { return resolve(null); }
+        requestAnimationFrame(tick);
+      };
+      tick();
+    });
+  }
+  return { load, startCam, stopCam, detect, draw, quality, snapshot, enroll, liveness, yaw };
 })();

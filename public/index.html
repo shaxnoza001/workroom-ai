@@ -157,7 +157,8 @@
       <h2>Room ochish</h2>
       <p class="muted small">Kompaniyangiz uchun yopiq raqamli ofis.</p>
       <label>Kompaniya nomi</label><input id="c-company" placeholder="Masalan: Turon Trade">
-      <label>Rahbar (admin) ismi</label><input id="c-admin" placeholder="Ism Familiya">
+      <label>Rahbar (admin) ismi</label><input id="c-admin" placeholder="Ism Familiya" autocomplete="name">
+      <label>Rahbar paroli (boshqa qurilmadan kirish uchun, kamida 6 belgi)</label><input id="c-pass" type="password" autocomplete="new-password" placeholder="••••••">
       <div class="grid g2"><div><label>Ish boshlanishi</label><input id="c-start" type="time" value="09:00"></div><div><label>Ish tugashi</label><input id="c-end" type="time" value="18:00"></div></div>
       <div class="row" style="margin-top:18px;justify-content:flex-end"><button class="btn sec" onclick="closeM('create')">Bekor</button><button class="btn" onclick="step1()">Davom etish →</button></div>
     </div>
@@ -195,8 +196,10 @@
   <div class="card modal">
     <div id="j1">
       <h2>Roomga kirish</h2>
-      <label>Kompaniya kodi</label><input id="j-code" placeholder="#UZ2026" style="text-transform:uppercase;font-size:20px;letter-spacing:2px">
-      <label>Ismingiz</label><input id="j-name" placeholder="Ism Familiya">
+      <div class="seg" style="margin-top:12px" id="j-role"><button class="on" data-r="emp" type="button">Xodimman</button><button data-r="boss" type="button">Rahbarman</button></div>
+      <label>Kompaniya kodi</label><input id="j-code" placeholder="#UZ123456" style="text-transform:uppercase;font-size:20px;letter-spacing:2px" autocomplete="off">
+      <div id="j-emp"><label>Ismingiz</label><input id="j-name" placeholder="Ism Familiya" autocomplete="name"><p class="small muted" style="margin-top:8px">Rahbar sizni tasdiqlagach, Room ochiladi. Rahbar shaxsiy havola yuborgan bo‘lsa, shu havolani oching.</p></div>
+      <div id="j-boss" class="hidden"><label>Rahbar paroli</label><input id="j-pass" type="password" autocomplete="current-password" placeholder="Room ochishda qo‘ygan parolingiz"></div>
       <div class="row" style="margin-top:18px;justify-content:flex-end"><button class="btn sec" onclick="closeM('join')">Bekor</button><button class="btn" onclick="join()">Kirish →</button></div>
     </div>
     <div id="j2" class="hidden">
@@ -228,10 +231,11 @@ function addRow(n = '', r = '', s = '') {
   $('#emp-rows').appendChild(d);
 }
 async function step1() {
-  const company = $('#c-company').value.trim(), adminName = $('#c-admin').value.trim();
+  const company = $('#c-company').value.trim(), adminName = $('#c-admin').value.trim(), adminPassword = $('#c-pass').value;
+  if (adminPassword.length < 6) return toast('Parol kamida 6 belgi bo‘lsin');
   if (!company || !adminName) return toast('Kompaniya nomi va ismingizni kiriting');
   try {
-    const j = await api('/api/rooms', { method: 'POST', body: { company, adminName, workStart: $('#c-start').value, workEnd: $('#c-end').value } });
+    const j = await api('/api/rooms', { method: 'POST', body: { company, adminName, adminPassword, workStart: $('#c-start').value, workEnd: $('#c-end').value } });
     W.code = j.code; setSession(j.code, { adminKey: j.adminKey, empId: j.empId, empKey: j.empKey, name: adminName });
     W.people = [{ id: j.empId, name: adminName }];
     $('#emp-rows').innerHTML = ''; addRow(); addRow(); addRow();
@@ -293,8 +297,16 @@ function goRoom() { location.href = '/room/' + W.code; }
 // JOIN
 let J = {};
 function openJoin() { $('#join').classList.remove('hidden'); $('#j1').classList.remove('hidden'); $('#j2').classList.add('hidden'); const l = WR.store.get('wr:last'); if (l) $('#j-code').value = l; }
+let ROLE = 'emp';
+$$('#j-role button').forEach((b) => (b.onclick = () => { ROLE = b.dataset.r; $$('#j-role button').forEach((x) => x.classList.toggle('on', x === b)); $('#j-emp').classList.toggle('hidden', ROLE !== 'emp'); $('#j-boss').classList.toggle('hidden', ROLE !== 'boss'); }));
 async function join() {
-  const code = $('#j-code').value.trim().toUpperCase().replace('#', ''); const name = $('#j-name').value.trim();
+  const code = $('#j-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''); const name = $('#j-name').value.trim();
+  if (ROLE === 'boss') {
+    if (!code) return toast('Kodni kiriting');
+    try { const j = await api(`/api/rooms/${code}/admin-login`, { method: 'POST', body: { password: $('#j-pass').value } }); setSession(code, j); location.href = '/room/' + code; }
+    catch (e) { toast(e.message); }
+    return;
+  }
   if (!code) return toast('Kodni kiriting');
   const s = session(code);
   if (s.empKey && (!name || name.toLowerCase() === (s.name || '').toLowerCase())) return (location.href = '/room/' + code);

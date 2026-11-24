@@ -17,8 +17,6 @@ services:
         generateValue: true   # Render o'zi uzun tasodifiy kalit yaratadi (Environment bo'limida ko'rasiz)
       - key: GEMINI_API_KEY
         sync: false
-      - key: GEMINI_MODEL
-        value: gemini-2.5-flash
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TURN_URL

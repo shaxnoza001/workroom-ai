@@ -11,7 +11,8 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_MODEL_ENV = (process.env.GEMINI_MODEL || '').trim();
+const AI = { model: GEMINI_MODEL_ENV || '', ok: null, error: '', at: 0, models: [] };
 const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TZ = 'Asia/Tashkent';
 const FACE_THRESHOLD = Number(process.env.FACE_THRESHOLD || 0.5);
@@ -53,6 +54,8 @@ const id = (n = 8) => crypto.randomBytes(n).toString('hex').slice(0, n);
 const safeEq = (a, b) => { a = String(a || ''); b = String(b || ''); if (!a || !b || a.length !== b.length) return false; return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)); };
 const roomOf = (code) => { const c = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); return Object.prototype.hasOwnProperty.call(db.rooms, c) ? db.rooms[c] : null; };
 const clip = (v, n) => String(v == null ? '' : v).slice(0, n);
+function hashPw(pw) { const salt = crypto.randomBytes(16).toString('hex'); return salt + ':' + crypto.scryptSync(String(pw), salt, 32).toString('hex'); }
+function checkPw(pw, stored) { if (!stored) return false; const [salt, h] = stored.split(':'); return safeEq(crypto.scryptSync(String(pw), salt, 32).toString('hex'), h); }
 const isTime = (t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(t));
 function nowTZ() {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -70,6 +73,7 @@ function newCode() {
   do { c = 'UZ' + crypto.randomInt(100000, 1000000); } while (db.rooms[c]);
   return c;
 }
+function meanDesc(list) { const m = new Array(128).fill(0); list.forEach((d) => d.forEach((v, i) => (m[i] += v / list.length))); return m; }
 function dist(a, b) {
   let s = 0;
   for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; s += d * d; }
@@ -81,7 +85,7 @@ function publicEmp(e) {
 function roomView(r) {
   return {
     code: r.code, company: r.company, workStart: r.workStart, workEnd: r.workEnd,
-    lateFine: r.lateFine, telegramLinked: !!r.telegramChatId, autopilot: !!r.autopilot, graceMin: r.graceMin || 15, requireApproval: r.requireApproval !== false,
+    lateFine: r.lateFine, telegramLinked: !!r.telegramChatId, autopilot: !!r.autopilot, graceMin: r.graceMin || 15, requireApproval: r.requireApproval !== false, liveness: r.liveness !== false, hasPassword: !!r.adminPass,
     employees: r.employees.map(publicEmp),
   };
 }
@@ -183,10 +187,12 @@ app.post('/api/rooms', (req, res) => {
   company = clip(company, 80).trim(); adminName = clip(adminName, 60).trim();
   if (!company || !adminName) return res.status(400).json({ error: 'Kompaniya nomi va rahbar ismi kerak.' });
   if (!isTime(workStart)) workStart = '09:00'; if (!isTime(workEnd)) workEnd = '18:00';
+  const pw = String((req.body || {}).adminPassword || '');
+  if (pw.length < 6) return res.status(400).json({ error: 'Rahbar paroli kamida 6 belgi bo‘lsin.' });
   const code = newCode();
   const admin = { id: id(), name: String(adminName).slice(0, 60), role: 'Rahbar', salary: 0, isAdmin: true, empKey: id(16), descriptors: [], createdAt: Date.now() };
   const r = {
-    code, company, adminKey: id(32), linkSecret: id(10), requireApproval: true,
+    code, company, adminKey: id(32), linkSecret: id(10), requireApproval: true, liveness: true, adminPass: hashPw(pw),
     workStart, workEnd, lateFine: 20000, telegramChatId: null, lastReport: null,
     employees: [admin], attendance: [], meetings: [], tasks: [], createdAt: Date.now(),
     absences: [], suggestions: [], mentorLog: [],
@@ -217,6 +223,7 @@ app.patch('/api/rooms/:code/settings', (req, res) => {
   if (lateFine !== undefined) r.lateFine = Math.max(0, Math.min(1e8, Number(lateFine) || 0));
   if (company) r.company = clip(company, 80);
   if (req.body.requireApproval !== undefined) r.requireApproval = !!req.body.requireApproval;
+  if (req.body.liveness !== undefined) r.liveness = !!req.body.liveness;
   if (req.body.autopilot !== undefined) r.autopilot = !!req.body.autopilot;
   if (req.body.graceMin !== undefined) r.graceMin = Math.max(5, Math.min(180, Number(req.body.graceMin) || 15));
   save(); res.json({ room: roomView(r) });
@@ -246,6 +253,20 @@ app.delete('/api/rooms/:code/employees/:eid', (req, res) => {
   if (!e || e.isAdmin) return res.status(400).json({ error: 'O‘chirib bo‘lmaydi' });
   r.employees = r.employees.filter((x) => x.id !== e.id); save();
   emit(r, 'employees', r.employees.map(publicEmp)); res.json({ ok: true });
+});
+
+// Rahbar boshqa qurilmadan: kod + parol → admin kaliti
+app.post('/api/rooms/:code/admin-login', limit('adminlogin', 8, 900000), (req, res) => {
+  const r = roomOf(req.params.code);
+  if (!r || !checkPw((req.body || {}).password, r.adminPass)) return res.status(401).json({ error: 'Kod yoki parol noto‘g‘ri.' });
+  const a = r.employees.find((e) => e.isAdmin) || {};
+  pushEvent(r, 'room', 'Rahbar yangi qurilmadan kirdi');
+  res.json({ adminKey: r.adminKey, empId: a.id, empKey: a.empKey, name: a.name });
+});
+app.post('/api/rooms/:code/password', (req, res) => {
+  const r = getRoom(req, res); if (!r || !requireAdmin(req, res, r)) return;
+  const pw = String((req.body || {}).password || ''); if (pw.length < 6) return res.status(400).json({ error: 'Kamida 6 belgi' });
+  r.adminPass = hashPw(pw); save(); res.json({ ok: true });
 });
 
 // Admin: xodimning shaxsiy taklif havolasi (kalit faqat adminga ko'rinadi)
@@ -288,18 +309,26 @@ app.put('/api/rooms/:code/employees/:eid/face', (req, res) => {
   const { descriptors, photo } = req.body || {};
   if (!Array.isArray(descriptors) || !descriptors.length || descriptors.length > 10 || descriptors.some((d) => !Array.isArray(d) || d.length !== 128 || d.some((v) => typeof v !== 'number' || !Number.isFinite(v) || Math.abs(v) > 2)))
     return res.status(400).json({ error: 'Yuz ma’lumoti noto‘g‘ri' });
-  // Duplicate-face guard: is this face already registered to someone else?
+  // Sifat: barcha namunalar bitta yuzga tegishli bo'lishi kerak (fon/kiyim "yuz" bo'lib qolmasin)
+  const mean = meanDesc(descriptors);
+  if (descriptors.length >= 3 && descriptors.some((d) => dist(d, mean) > 0.42))
+    return res.status(422).json({ error: 'Skaner sifati past (namunalar bir-biriga o‘xshamadi). Yorug‘ joyda, kameraga yaqinroq qayta urinib ko‘ring.' });
+  // Bir yuz ikki xodimga yozilmasin
   for (const other of r.employees) {
-    if (other.id === e.id) continue;
-    for (const od of other.descriptors || []) {
-      if (dist(od, descriptors[0]) < FACE_THRESHOLD * 0.85)
-        return res.status(409).json({ error: `Bu yuz allaqachon "${other.name}" nomiga ro‘yxatdan o‘tgan.` });
-    }
+    if (other.id === e.id || !(other.descriptors || []).length) continue;
+    if (dist(meanDesc(other.descriptors), mean) < FACE_THRESHOLD)
+      return res.status(409).json({ error: `Bu yuz allaqachon "${other.name}" nomiga ro‘yxatdan o‘tgan. Avval uning Face ID’sini o‘chiring yoki boshqa odamni skaner qiling.` });
   }
   e.descriptors = descriptors.slice(0, 6).map((d) => d.map((v) => Math.round(v * 1e5) / 1e5));
   if (typeof photo === 'string' && photo.length < 120000 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(photo)) e.photo = photo;
   save(); emit(r, 'employees', r.employees.map(publicEmp));
   res.json({ employee: publicEmp(e) });
+});
+
+app.delete('/api/rooms/:code/employees/:eid/face', (req, res) => {
+  const r = getRoom(req, res); if (!r || !requireAdmin(req, res, r)) return;
+  const e = r.employees.find((x) => x.id === req.params.eid); if (!e) return res.status(404).json({ error: 'Xodim topilmadi' });
+  e.descriptors = []; e.photo = null; save(); emit(r, 'employees', r.employees.map(publicEmp)); res.json({ ok: true });
 });
 
 // Face ID check-in / check-out
@@ -309,36 +338,41 @@ app.post('/api/rooms/:code/checkin', (req, res) => {
   const adm = isAdmin(req, r), self = member(req, r);
   if (!adm && !self) return res.status(403).json({ error: 'Face ID kiosk uchun Room’ga kiring.' });
   const { descriptor } = req.body || {};
+  const mode = ['in', 'out'].includes((req.body || {}).mode) ? req.body.mode : 'auto';
   if (!Array.isArray(descriptor) || descriptor.length !== 128 || descriptor.some((v) => typeof v !== 'number' || !Number.isFinite(v))) return res.status(400).json({ error: 'Yuz aniqlanmadi' });
-  let best = null, bestD = 9;
-  for (const e of r.employees) if (!e.pending) for (const d of e.descriptors || []) {
-    const dd = dist(d, descriptor); if (dd < bestD) { bestD = dd; best = e; }
-  }
+  // Har bir xodim uchun eng yaqin masofa; 1-o'rin 2-o'rindan aniq ajralib turishi shart
+  const scores = r.employees.filter((e) => !e.pending && (e.descriptors || []).length)
+    .map((e) => ({ e, d: Math.min(...e.descriptors.map((x) => dist(x, descriptor)), dist(meanDesc(e.descriptors), descriptor)) }))
+    .sort((a, b) => a.d - b.d);
+  const best = scores[0] && scores[0].e, bestD = scores[0] ? scores[0].d : 9;
   if (!best || bestD > FACE_THRESHOLD) return res.json({ match: false });
+  if (scores[1] && scores[1].d - bestD < 0.06) return res.json({ match: false, ambiguous: true });
   if (!adm && best.id !== self.id) return res.json({ match: true, notYou: true, employee: { name: best.name } });
   const { date, time } = nowTZ();
   const today = r.attendance.filter((a) => a.empId === best.id && a.date === date);
-  const last = today[today.length - 1];
-  if (last && Date.now() - last.ts < 60 * 1000) {
-    return res.json({ match: true, repeat: true, employee: publicEmp(best), record: last, confidence: Math.round((1 - bestD) * 100) });
-  }
-  let type, status;
-  if (!today.some((a) => a.type === 'in')) {
-    type = 'in';
-    const late = toMin(time) - toMin(r.workStart);
-    status = late > 5 ? 'kechikdi' : 'keldi';
-    var lateMin = Math.max(0, late);
-  } else {
-    type = 'out'; status = toMin(time) < toMin(r.workEnd) ? 'erta ketdi' : 'ketdi';
-  }
-  const rec = { id: id(), empId: best.id, name: best.name, date, time, type, status, lateMin: lateMin || 0, ts: Date.now() };
-  r.attendance.push(rec);
+  const inRec = today.find((a) => a.type === 'in'), outRec = today.find((a) => a.type === 'out');
+  const conf = Math.max(50, Math.round((1 - bestD) * 100));
+  const reply = (extra) => res.json({ match: true, employee: publicEmp(best), confidence: conf, ...extra });
+  // Kelish: kuniga bir marta. Ketish: kelgandan kamida MIN_OUT daqiqa o'tgach yoki kiosk "Ketish" rejimida.
+  const MIN_OUT = 180;
+  let type;
+  if (!inRec) type = 'in';
+  else if (mode === 'in') return reply({ repeat: true, record: inRec, hint: 'Bugun kelganingiz allaqachon belgilangan' });
+  else if (mode === 'out' || (Date.now() - inRec.ts) / 60000 >= MIN_OUT) type = 'out';
+  else return reply({ repeat: true, record: inRec, hint: `Kelganingiz ${inRec.time} da belgilangan. Ketishda kioskda “Ketish” rejimini tanlang yoki ${addMin(inRec.time, MIN_OUT)} dan keyin qarang.` });
+  if (type === 'out' && outRec && Date.now() - outRec.ts < 2 * 60000) return reply({ repeat: true, record: outRec, hint: 'Ketishingiz hozirgina belgilandi' });
+  let status, lateMin = 0;
+  if (type === 'in') { const late = toMin(time) - toMin(r.workStart); status = late > 5 ? 'kechikdi' : 'keldi'; lateMin = Math.max(0, late); }
+  else status = toMin(time) < toMin(r.workEnd) ? 'erta ketdi' : 'ketdi';
+  let rec;
+  if (type === 'out' && outRec) { Object.assign(outRec, { time, status, ts: Date.now() }); rec = outRec; } // oxirgi ketish vaqti yangilanadi
+  else { rec = { id: id(), empId: best.id, name: best.name, date, time, type, status, lateMin, ts: Date.now() }; r.attendance.push(rec); }
   if (r.attendance.length > 20000) r.attendance = r.attendance.slice(-15000);
   save(); emit(r, 'attendance', rec);
   pushEvent(r, 'checkin', `${best.name} — ${status} (${time})`);
   const icon = { keldi: '✅', kechikdi: '⏰', ketdi: '🏁', 'erta ketdi': '⚠️' }[status];
   tgSend(r, `${icon} <b>${esc(best.name)}</b> — ${status}${rec.lateMin ? ` (${rec.lateMin} daqiqa)` : ''}\n🕘 ${time} · ${r.company}`);
-  res.json({ match: true, employee: publicEmp(best), record: rec, confidence: Math.round((1 - bestD) * 100) });
+  reply({ record: rec });
 });
 
 app.get('/api/rooms/:code/attendance', (req, res) => {
@@ -348,6 +382,13 @@ app.get('/api/rooms/:code/attendance', (req, res) => {
   let list = r.attendance.filter((a) => a.date >= from && a.date <= to);
   if (!isAdmin(req, r)) list = me && !me.pending ? list.filter((a) => a.empId === me.id) : [];
   res.json({ attendance: list, today: nowTZ().date });
+});
+
+app.delete('/api/rooms/:code/attendance/:aid', (req, res) => {
+  const r = getRoom(req, res); if (!r || !requireAdmin(req, res, r)) return;
+  const n = r.attendance.length; r.attendance = r.attendance.filter((a) => a.id !== req.params.aid);
+  if (r.attendance.length === n) return res.status(404).json({ error: 'Topilmadi' });
+  save(); res.json({ ok: true });
 });
 
 // Tasks
@@ -482,13 +523,42 @@ Vazifa: 1) qisqa xulosa (3-5 gap), 2) qabul qilingan qarorlar, 3) aniq vazifalar
   return geminiCall(body, true);
 }
 
-async function geminiCall(body, json) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`;
-  const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY }, body: JSON.stringify(body), signal: AbortSignal.timeout(90000) });
-  const j = await resp.json();
-  if (!resp.ok) throw new Error((j.error && j.error.message) || resp.status);
-  const out = (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts || []).map((p) => p.text || '').join('');
-  return json ? JSON.parse(out) : out;
+// Gemini modelini avtomatik tanlash: kalitga ochiq eng yangi "flash" modeli (eski model o'chirilsa ham ishlayveradi)
+async function resolveModel(force) {
+  if (AI.model && !force) return AI.model;
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': GEMINI_API_KEY }, signal: AbortSignal.timeout(20000) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((j.error && j.error.message) || 'Gemini: ' + r.status);
+  const ok = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent')).map((m) => m.name.replace('models/', ''));
+  AI.models = ok;
+  if (GEMINI_MODEL_ENV && ok.includes(GEMINI_MODEL_ENV)) return (AI.model = GEMINI_MODEL_ENV);
+  const ver = (n) => { const m = n.match(/gemini-(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
+  const cands = ok.filter((n) => /^gemini-[\d.]+-flash(-\d+)?$/.test(n) || n === 'gemini-flash-latest');
+  const pick = cands.filter((n) => n !== 'gemini-flash-latest').sort((a, b) => ver(b) - ver(a) || a.length - b.length)[0]
+    || (ok.includes('gemini-flash-latest') && 'gemini-flash-latest')
+    || ok.filter((n) => /flash/.test(n) && !/(image|live|tts|audio|embed|exp)/.test(n)).sort((a, b) => ver(b) - ver(a))[0]
+    || ok.find((n) => /^gemini/.test(n));
+  if (!pick) throw new Error('Kalitingizga mos Gemini modeli topilmadi');
+  return (AI.model = pick);
+}
+async function geminiCall(body, json, retried) {
+  let model;
+  try { model = await resolveModel(); } catch (e) { AI.ok = false; AI.error = e.message; AI.at = Date.now(); throw e; }
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY }, body: JSON.stringify(body), signal: AbortSignal.timeout(120000) });
+  const j = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const msg = (j.error && j.error.message) || 'Gemini ' + resp.status;
+    if (!retried && (resp.status === 404 || /not found|not supported|deprecated/i.test(msg))) { AI.model = ''; await resolveModel(true).catch(() => {}); return geminiCall(body, json, true); }
+    AI.ok = false; AI.error = msg; AI.at = Date.now();
+    throw new Error(msg);
+  }
+  AI.ok = true; AI.error = ''; AI.at = Date.now();
+  const cand = j.candidates && j.candidates[0];
+  const out = ((cand && cand.content && cand.content.parts) || []).filter((p) => !p.thought).map((p) => p.text || '').join('').trim();
+  if (!out) throw new Error('Gemini bo‘sh javob qaytardi' + (cand && cand.finishReason ? ' (' + cand.finishReason + ')' : ''));
+  if (!json) return out;
+  try { return JSON.parse(out); } catch (_) { const m = out.match(/\{[\s\S]*\}/); if (m) return JSON.parse(m[0]); throw new Error('Gemini javobi JSON emas'); }
 }
 
 // Fallback: rule-based Uzbek task extraction (works without API key)
@@ -576,7 +646,8 @@ app.post('/api/rooms/:code/mentor', async (req, res, next) => { try {
       if (kbText.length > 60000) kbText = kbText.slice(0, 60000);
       const sys = `Sen "${r.company}" kompaniyasining AI Mentorisan (WORKROOM AI). Vazifang — xodimlarni, ayniqsa yangi kelganlarni o‘qitish va savollariga javob berish, shunda tajribali mutaxassislar vaqti tejaladi.
 Qoidalar: javobni o‘zbek tilida (lotin), samimiy va aniq yoz; kerak bo‘lsa qadamlarga bo‘l (1., 2., 3.). Kompaniyaga oid savollarda FAQAT bilim bazasiga tayan; bazada javob yo‘q bo‘lsa, ochiq ayt va "rahbardan aniqlashtiring" deb maslahat ber — to‘qib chiqarma. Umumiy kasbiy savollarda (Excel, sotuv, muloqot va h.k.) o‘z bilimingdan foydalan. Uzunligi 180 so‘zdan oshmasin.
-Suhbatdosh: ${who.name}, lavozimi: ${who.role}. Ish vaqti: ${r.workStart}–${r.workEnd}.
+Suhbatdosh: ${who.name}, lavozimi: ${who.role}. Ish vaqti: ${r.workStart}–${r.workEnd}. Bugungi sana va vaqt: ${nowTZ().date} ${nowTZ().time} (Toshkent).
+${isAdmin(req, r) ? 'Suhbatdosh — rahbar. Bugungi jonli holat (davomat, vazifalar haqidagi savollarga shundan javob ber):\n' + JSON.stringify(dayFacts(r)) : ''}
 Uning ochiq vazifalari:\n${myTasks || '(yo‘q)'}
 === BILIM BAZASI ===\n${kbText || '(bo‘sh)'}`;
       const contents = [
@@ -590,11 +661,17 @@ Uning ochiq vazifalari:\n${myTasks || '(yo‘q)'}
       return res.json({ answer: out.answer, sources: out.sources || [], engine: 'gemini' });
     } catch (e) { console.error('Mentor Gemini xato:', e.message); }
   }
+  // Kalitsiz yoki Gemini xatosida ham davomat savollariga jonli ma'lumotdan javob
+  if (isAdmin(req, r) && /(kim|nechta|qancha).{0,25}(kel|kech|yo‘q|yoq|ishda)|davomat/i.test(question)) {
+    const f = dayFacts(r);
+    return res.json({ engine: 'data', sources: ['Bugungi davomat'], answer: `Bugun (${f.date}) ${f.total} xodimdan ${f.came} nafari keldi.${f.late.length ? `\nKechikkanlar: ${f.late.join(', ')}.` : ''}\nSababli kelmaganlar: ${f.absent.join(', ') || 'yo‘q'}.\nXabarsiz kelmaganlar: ${f.missing.join(', ') || 'yo‘q'}.${f.subs.length ? `\nO‘rinbosarlar: ${f.subs.join(', ')}.` : ''}` + (GEMINI_API_KEY && AI.error ? `\n\n(Gemini hozir ishlamayapti: ${AI.error})` : '') });
+  }
   const hits = kbSearch(r, question);
   const answer = hits.length
     ? `Bilim bazasidan topdim — “${hits[0].title}”:\n\n${hits[0].text.slice(0, 700)}${hits[0].text.length > 700 ? '…' : ''}`
     : 'Bu savolga bilim bazasida javob topilmadi. Rahbaringizdan aniqlashtiring — u javobni bilim bazasiga qo‘shsa, keyingi safar men darhol aytib beraman.';
-  res.json({ answer: answer + (GEMINI_API_KEY ? '' : '\n\n(Aqlli javoblar uchun serverga GEMINI_API_KEY qo‘shing.)'), sources: hits.slice(0, 1).map((k) => k.title), engine: 'qidiruv' });
+  const note = !GEMINI_API_KEY ? '\n\n(Aqlli javoblar uchun serverga GEMINI_API_KEY qo‘shing.)' : AI.error ? `\n\n(Gemini xatosi: ${AI.error}. Sozlamalar → Tizim holati.)` : '';
+  res.json({ answer: answer + (isAdmin(req, r) ? note : ''), sources: hits.slice(0, 1).map((k) => k.title), engine: 'qidiruv' });
 } catch (e) { next(e); } });
 
 // ---------- E'lonlar ----------
@@ -812,12 +889,36 @@ io.on('connection', (socket) => {
 
 // ---------- Telegram bot ----------
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const TG = { mode: TG_TOKEN ? 'kutilmoqda' : 'o‘chiq', ok: null, error: '', username: '', lastUpdate: 0 };
 async function tg(method, payload) {
   if (!TG_TOKEN) return null;
   try {
     const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(40000) });
-    return await r.json();
-  } catch (e) { return null; }
+    const j = await r.json();
+    if (!j.ok && method !== 'answerCallbackQuery') { TG.error = `${method}: ${j.description || r.status}`; if (j.error_code === 401) TG.ok = false; console.error('Telegram', TG.error); }
+    return j;
+  } catch (e) { TG.error = `${method}: ${e.message}`; return null; }
+}
+const TG_SECRET = TG_TOKEN ? crypto.createHash('sha256').update('wr-tg:' + TG_TOKEN).digest('hex').slice(0, 32) : '';
+const PUBLIC_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+// Webhook: Telegram xabari serverni uyg'otadi (Render bepul tarifida ham bot ishlaydi)
+app.post('/tg/' + (TG_SECRET || 'off'), (req, res) => {
+  if (!TG_SECRET || !safeEq(req.get('x-telegram-bot-api-secret-token'), TG_SECRET)) return res.sendStatus(403);
+  res.sendStatus(200);
+  TG.lastUpdate = Date.now();
+  Promise.resolve(processUpdate(req.body || {})).catch((e) => console.error('TG update:', e.message));
+});
+async function tgStart() {
+  const me = await tg('getMe', {});
+  if (!me || !me.ok) { TG.ok = false; TG.mode = 'xato'; TG.error = TG.error || 'Token noto‘g‘ri yoki Telegram’ga ulanib bo‘lmadi'; return; }
+  TG.username = me.result.username; TG.ok = true; TG.error = '';
+  tg('setMyCommands', { commands: [{ command: 'start', description: 'Yordam' }, { command: 'hisobot', description: 'Bugungi davomat' }, { command: 'ulash', description: 'Rahbar: Room’ni ulash' }, { command: 'men', description: 'Xodim: hisobimni ulash' }] });
+  if (PUBLIC_URL.startsWith('https://')) {
+    const w = await tg('setWebhook', { url: `${PUBLIC_URL}/tg/${TG_SECRET}`, secret_token: TG_SECRET, allowed_updates: ['message', 'callback_query', 'channel_post'], drop_pending_updates: false });
+    if (w && w.ok) { TG.mode = 'webhook'; console.log('Telegram webhook:', PUBLIC_URL); return; }
+    console.error('Webhook o‘rnatilmadi, polling’ga o‘tildi');
+  }
+  await tg('deleteWebhook', {}); TG.mode = 'polling'; tgPoll();
 }
 function tgSend(r, text, extra = {}) { if (r.telegramChatId) tg('sendMessage', { chat_id: r.telegramChatId, text, parse_mode: 'HTML', ...extra }); }
 function attendanceText(r) {
@@ -832,17 +933,24 @@ function attendanceText(r) {
     (absent.length ? `❌ Kelmadi: ${absent.map((e) => esc(e.name)).join(', ')}` : '🎉 Hamma joyida!');
 }
 async function tgPoll() {
-  if (!TG_TOKEN) return;
+  if (!TG_TOKEN || TG.mode !== 'polling') return;
   const j = await tg('getUpdates', { offset: db.tgOffset || 0, timeout: 25 });
   if (j && j.ok) {
-    for (const u of j.result) {
-      db.tgOffset = u.update_id + 1;
-      if (u.callback_query) { handleCallback(u.callback_query); continue; }
-      const msg = u.message || u.channel_post; if (!msg || !msg.text) continue;
+    TG.ok = true; TG.error = '';
+    for (const u of j.result) { db.tgOffset = u.update_id + 1; TG.lastUpdate = Date.now(); try { await processUpdate(u); } catch (e) { console.error('TG update:', e.message); } }
+    save();
+  } else if (j && j.error_code === 409) TG.error = 'Boshqa server ham shu bot bilan ishlayapti (eski Render servisini o‘chiring yoki boshqa token oling)';
+  setTimeout(tgPoll, j && j.ok ? 300 : 8000);
+}
+async function processUpdate(u) {
+  if (u.callback_query) return handleCallback(u.callback_query);
+  {
+    {
+      const msg = u.message || u.channel_post; if (!msg || !msg.text) return;
       const [cmd, code, secret] = msg.text.trim().split(/\s+/);
       const c = cmd.split('@')[0];
       if (c === '/start' || c === '/help') {
-        tg('sendMessage', { chat_id: msg.chat.id, text: 'WORKROOM AI boti.\nUlash: /ulash ROOMKOD MAXFIY (admin paneldagi “Sozlamalar”dan oling)\n/hisobot — bugungi davomat' });
+        tg('sendMessage', { chat_id: msg.chat.id, parse_mode: 'HTML', text: '👋 <b>WORKROOM AI</b> botiga xush kelibsiz!\n\n<b>Rahbar:</b> saytda Sozlamalar → Telegram bo‘limidagi <code>/ulash UZ… …</code> buyrug‘ini shu yerga (yoki guruhga) yuboring — davomat, AI Assistant va kun xulosasi keladi.\n\n<b>Xodim:</b> saytdagi bosh sahifangizda <code>/men UZ… …</code> buyrug‘i bor — uni yuboring, vazifa va e’lonlar sizga keladi.\n\n/hisobot — bugungi davomat' });
       } else if (c === '/ulash') {
         const r = roomOf(code);
         if (r && safeEq(secret, r.linkSecret)) { r.telegramChatId = msg.chat.id; tg('sendMessage', { chat_id: msg.chat.id, text: `✅ ${r.company} ulandi. Kim keldi/kelmadi shu yerga keladi.` }); emit(r, 'settings', roomView(r)); }
@@ -855,11 +963,12 @@ async function tgPoll() {
       } else if (c === '/hisobot') {
         const r = Object.values(db.rooms).find((x) => x.telegramChatId === msg.chat.id);
         tg('sendMessage', { chat_id: msg.chat.id, text: r ? attendanceText(r) : 'Avval /ulash qiling.', parse_mode: 'HTML' });
+      } else if (msg.chat.type === 'private' && c.startsWith('/') === false) {
+        tg('sendMessage', { chat_id: msg.chat.id, text: 'Buyruqlar: /start, /hisobot, /ulash, /men' });
       }
+      save();
     }
-    save();
   }
-  setTimeout(tgPoll, j ? 500 : 5000);
 }
 async function handleCallback(q) {
   const [kind, code, sid, act] = String(q.data || '').split(':');
@@ -936,7 +1045,23 @@ app.get('/api/ice', (_, res) => {
   res.json({ iceServers: ice });
 });
 
-app.get('/healthz', (_, res) => res.json({ ok: true, gemini: !!GEMINI_API_KEY, telegram: !!TG_TOKEN }));
+app.get('/healthz', (_, res) => res.json({ ok: true, uptime: Math.round(process.uptime()), gemini: GEMINI_API_KEY ? (AI.ok === false ? 'xato' : 'ok') : 'yo‘q', telegram: TG_TOKEN ? TG.mode : 'yo‘q' }));
+// Rahbar uchun tizim holati: Gemini va Telegram'ni jonli tekshiradi, xato matnini ko'rsatadi
+app.post('/api/rooms/:code/diag', limit('diag', 10, 600000), async (req, res, next) => {
+  try {
+    const r = getRoom(req, res); if (!r || !requireAdmin(req, res, r)) return;
+    const out = { gemini: { configured: !!GEMINI_API_KEY }, telegram: { configured: !!TG_TOKEN }, storage: { dir: DATA_DIR, persistent: !!process.env.DATA_DIR }, url: PUBLIC_URL };
+    if (GEMINI_API_KEY) {
+      try { const t = await geminiCall({ contents: [{ role: 'user', parts: [{ text: 'Faqat "OK" deb javob ber.' }] }] }, false); out.gemini = { configured: true, ok: true, model: AI.model, reply: t.slice(0, 40) }; }
+      catch (e) { out.gemini = { configured: true, ok: false, model: AI.model, error: e.message }; }
+    }
+    if (TG_TOKEN) {
+      const me = await tg('getMe', {}); const wh = await tg('getWebhookInfo', {});
+      out.telegram = { configured: true, ok: !!(me && me.ok), username: me && me.ok ? me.result.username : '', mode: TG.mode, linked: !!r.telegramChatId, error: TG.error || (me && !me.ok ? me.description : ''), webhookError: wh && wh.ok && wh.result.last_error_message ? wh.result.last_error_message : '', pending: wh && wh.ok ? wh.result.pending_update_count : 0 };
+    }
+    res.json(out);
+  } catch (e) { next(e); }
+});
 app.get('/room/:code', (_, res) => res.sendFile(path.join(__dirname, 'public', 'app.html')));
 app.get('/admin', (_, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
@@ -957,6 +1082,7 @@ process.on('SIGTERM', shutdown); process.on('SIGINT', shutdown);
 
 server.listen(PORT, () => {
   console.log(`WORKROOM AI: http://localhost:${PORT}  | Gemini: ${GEMINI_API_KEY ? 'ON' : 'OFF'} | Telegram: ${TG_TOKEN ? 'ON' : 'OFF'}`);
-  if (TG_TOKEN) { tg('deleteWebhook', {}); tgPoll().catch((e) => console.error('Telegram:', e.message)); }
+  if (TG_TOKEN) tgStart().catch((e) => { TG.ok = false; TG.error = e.message; console.error('Telegram:', e.message); });
+  if (GEMINI_API_KEY) resolveModel().then((m) => console.log('Gemini modeli:', m)).catch((e) => { AI.ok = false; AI.error = e.message; console.error('Gemini:', e.message); });
   backup();
 });

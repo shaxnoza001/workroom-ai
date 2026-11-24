@@ -345,3 +345,16 @@ tr.click{cursor:pointer}tr.click:hover td{background:rgba(255,255,255,.02)}
 @media (prefers-reduced-motion:reduce){.hero h1 .w,.hero .fadeup{opacity:1;animation:none;filter:none;transform:none}.marquee .track{animation:none}}
 .landing .card.modal{overflow:auto}
 .cam .msg,.vtile .nm,.vtile .cap,.cam .greet{color:#fff}
+
+/* Kiosk v6 */
+.cam.found .scan-line{display:none}
+.cam .ring{inset:10% 26%;border:2px dashed rgba(255,255,255,.35)}
+.kcam{aspect-ratio:4/3}
+.seg{display:inline-flex;gap:4px;padding:4px;border-radius:14px;background:var(--card2);border:1px solid var(--line);margin-bottom:12px}
+.seg button{border:0;background:transparent;color:var(--mut);padding:9px 18px;border-radius:10px;font-weight:600;cursor:pointer;min-height:40px}
+.seg button.on{background:var(--acc);color:#fff}
+.clock{font-family:var(--head);font-weight:800;font-size:30px;font-variant-numeric:tabular-nums}
+.kres{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:20px;color:#fff;backdrop-filter:blur(10px);animation:pop .25s ease;z-index:3}
+.kres.ok{background:rgba(6,60,46,.78)}.kres.info{background:rgba(20,30,70,.8)}.kres.bad{background:rgba(90,20,35,.8)}
+.kres b{font-family:var(--head);font-size:clamp(20px,3.4vw,30px)}.kres .av{border:3px solid rgba(255,255,255,.8)}
+.kres .badge{font-size:14px;padding:6px 12px}.kres .muted{color:rgba(255,255,255,.8)}.kres .kbig{color:#fff}
