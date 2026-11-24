@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WORKROOM AI — Platforma admin</title>
+<meta name="theme-color" content="#070b17">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+<script>try{document.documentElement.dataset.theme=JSON.parse(localStorage.getItem('wr:theme'))||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){document.documentElement.dataset.theme='dark'}</script>
+<link rel="stylesheet" href="/css/style.css">
+<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/icon.svg"><meta name="apple-mobile-web-app-capable" content="yes">
+</head>
+<body>
+<nav class="nav">
+  <a href="/" class="logo"><i>W</i> WORKROOM AI <span class="badge ghost" style="margin-left:4px">Platforma admin</span></a>
+  <div class="row"><span id="st"></span><span data-theme-btn=""></span><button class="btn ghost sm hidden" id="logout">Chiqish</button></div>
+</nav>
+
+<main class="section" style="padding-top:28px" id="root">
+  <div class="card" style="max-width:440px;margin:60px auto" id="login">
+    <h2>Umumiy admin panel</h2>
+    <p class="muted small" style="margin-top:6px">Platformadagi barcha Room’lar, xodimlar va jonli faollik. Kalit serverdagi <b>SUPER_ADMIN_KEY</b> o‘zgaruvchisi.</p>
+    <label>Super admin kaliti</label><input id="key" type="password" autocomplete="current-password">
+    <button class="btn" style="margin-top:16px;width:100%" id="enter">Kirish</button>
+  </div>
+</main>
+
+<div id="modal" class="modal-bg hidden"><div class="card modal" id="modal-body" style="width:min(720px,100%)"></div></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/common.js"></script>
+<script>
+{
+  const { $, $$, esc, ic, store, toast } = WR;
+  let KEY = store.get('wr:super') || '', DATA = null, q = '', socket = null, timer = null;
+  const ago = (ts) => { const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? 'hozir' : m < 60 ? m + ' daq oldin' : m < 1440 ? Math.round(m / 60) + ' soat oldin' : Math.round(m / 1440) + ' kun oldin'; };
+  const evIc = { room: 'building', checkin: 'scan', meeting: 'video', mentor: 'brain', absence: 'sick' };
+  async function sapi(path, opts = {}) {
+    const r = await fetch(path, { ...opts, headers: { 'x-super-key': KEY } });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || r.status);
+    return j;
+  }
+  async function load() {
+    try { DATA = await sapi('/api/super/overview'); }
+    catch (e) { toast(e.message, 5000); if (/Kalit|403/.test(e.message)) { store.del('wr:super'); KEY = ''; } return showLogin(); }
+    store.set('wr:super', KEY); $('#logout').classList.remove('hidden');
+    $('#st').innerHTML = `<span class="badge ${DATA.ai ? 'ok' : 'warn'}">Gemini ${DATA.ai ? 'ulangan' : 'yo‘q'}</span> <span class="badge ${DATA.telegram ? 'ok' : 'warn'}">Telegram ${DATA.telegram ? 'ulangan' : 'yo‘q'}</span>`;
+    render();
+    if (!socket && window.io) {
+      socket = io(); socket.on('connect', () => socket.emit('super:join', { key: KEY }));
+      socket.on('super:event', (ev) => { DATA.events.unshift(ev); renderEvents(); clearTimeout(timer); timer = setTimeout(load, 1500); });
+    }
+  }
+  function showLogin() { $('#root').innerHTML = $('#root').dataset.login; bindLogin(); }
+  function bindLogin() { $('#enter').onclick = () => { KEY = $('#key').value.trim(); if (KEY) load(); }; $('#key').onkeydown = (e) => e.key === 'Enter' && $('#enter').click(); }
+  function render() {
+    const t = DATA.totals, max = Math.max(1, ...DATA.trend.map((d) => d.checkins));
+    const k = (icn, l, v, c = '') => `<div class="card stat"><div class="l">${ic(icn)} ${l}</div><div class="n" style="${c}">${v}</div></div>`;
+    $('#root').innerHTML = `
+      <div class="top"><div><h1>Platforma boshqaruvi</h1><div class="sub">Barcha ochilgan Room’lar real vaqtda</div></div><button class="btn sec" id="refresh">${ic('zap')} Yangilash</button></div>
+      <div class="grid g4 stats">
+        ${k('building', 'Room’lar', t.rooms)}${k('users', 'Xodimlar', t.employees)}${k('scan', 'Face ID ro‘yxatda', t.faces, 'color:var(--mint)')}${k('check', 'Bugun keldi', t.todayIn, 'color:var(--mint)')}
+        ${k('video', 'Majlislar', t.meetings)}${k('brain', 'AI Mentor savollari', t.mentorQs)}${k('zap', 'Ochiq vazifalar', t.tasksOpen)}${k('wallet', 'Taxminiy MRR', '$' + t.mrr, 'color:var(--warn)')}
+      </div>
+      <div class="grid" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);margin-top:16px" id="two">
+        <div class="card"><div class="row between"><h3>Face ID check-in, 14 kun</h3><span class="small muted">Room’lar: ${DATA.trend[0].rooms} → ${DATA.trend[13].rooms}</span></div>
+          <div class="spark">${DATA.trend.map((d) => `<div title="${d.date}: ${d.checkins}" style="height:${Math.max(2, (d.checkins / max) * 100)}%"></div>`).join('')}</div>
+          <div class="row between small muted" style="margin-top:6px"><span>${DATA.trend[0].date.slice(5)}</span><span>bugun · ${DATA.trend[13].checkins}</span></div></div>
+        <div class="card"><div class="row between"><h3>Jonli faollik</h3><span class="badge ok"><span class="dot"></span> live</span></div><div id="events" style="max-height:260px;overflow:auto;margin-top:6px"></div></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="row between"><h3>Room’lar (${DATA.rooms.length})</h3><input id="q" placeholder="Qidirish: kompaniya, kod, rahbar" style="max-width:300px" value="${esc(q)}"></div>
+        <div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Kompaniya</th><th>Kod</th><th class="num">Xodim</th><th class="num">Face ID</th><th class="num">Bugun</th><th class="num">Majlis</th><th class="num">Mentor</th><th>Tarif</th><th>Faollik</th></tr></thead><tbody id="rows"></tbody></table></div>
+      </div>`;
+    if (innerWidth < 900) $('#two').style.gridTemplateColumns = 'minmax(0,1fr)';
+    $('#refresh').onclick = load; $('#q').oninput = (e) => { q = e.target.value; rows(); };
+    rows(); renderEvents();
+  }
+  function rows() {
+    const f = DATA.rooms.filter((r) => !q || (r.company + r.code + r.admin).toLowerCase().includes(q.toLowerCase()));
+    $('#rows').innerHTML = f.map((r) => `<tr class="click" data-c="${r.code}"><td><b>${esc(r.company)}</b><div class="small muted">${esc(r.admin)}${r.telegram ? ' · Telegram' : ''}</div></td><td><span class="badge ghost">#${r.code}</span></td>
+      <td class="num">${r.employees}</td><td class="num">${r.faces}/${r.employees}</td><td class="num">${r.todayIn}${r.todayLate ? ` <span class="small" style="color:var(--warn)">(${r.todayLate})</span>` : ''}</td><td class="num">${r.meetings}</td><td class="num">${r.mentorQs}</td>
+      <td><span class="badge ${r.plan === 'BUSINESS' ? '' : 'ghost'}">${r.plan}</span></td><td class="small muted" style="white-space:nowrap">${ago(r.lastActivity)}</td></tr>`).join('') || `<tr><td colspan="9"><div class="empty">${ic('building')}<div>Hali Room ochilmagan</div></div></td></tr>`;
+    $$('#rows tr[data-c]').forEach((tr) => (tr.onclick = () => detail(tr.dataset.c)));
+  }
+  function renderEvents() {
+    const el = $('#events'); if (!el) return;
+    el.innerHTML = DATA.events.slice(0, 40).map((e) => `<div class="ev"><div class="k">${ic(evIc[e.type] || 'bell')}</div><div class="grow"><div>${esc(e.text)}</div><div class="small muted">${esc(e.company || '')} · ${ago(e.ts)}</div></div></div>`).join('') || `<div class="empty">${ic('bell')}<div>Faollik yo‘q</div></div>`;
+  }
+  async function detail(code) {
+    const d = await sapi('/api/super/rooms/' + code); const s = d.stats;
+    $('#modal-body').innerHTML = `<div class="row between"><div><h2>${esc(s.company)}</h2><div class="small muted">#${s.code} · rahbar: ${esc(s.admin)} · ochilgan ${new Date(s.createdAt).toLocaleDateString('uz-UZ')}</div></div><button class="icon-btn" id="mx">${ic('x')}</button></div>
+      <div class="grid g4 stats" style="margin-top:16px">${[['Xodim', s.employees], ['Face ID', s.faces], ['Vazifa (ochiq)', s.tasksOpen], ['Bilim bazasi', s.kb]].map(([l, v]) => `<div class="card stat" style="padding:14px"><div class="l">${l}</div><div class="n" style="font-size:24px">${v}</div></div>`).join('')}</div>
+      <h3 style="margin:18px 0 6px">Xodimlar</h3>${d.employees.map((e) => `<div class="list-item">${WR.avatar(e, 32)}<div class="grow">${esc(e.name)} <span class="small muted">· ${esc(e.role)}</span></div>${e.hasFace ? '<span class="badge ok">Face ID</span>' : '<span class="badge warn">yo‘q</span>'}</div>`).join('')}
+      <h3 style="margin:18px 0 6px">So‘nggi majlislar</h3>${d.meetings.map((m) => `<div class="list-item"><div class="grow">${esc(m.title)}<div class="small muted">${m.date} · ${m.tasks} vazifa</div></div><span class="badge ${m.status === 'live' ? 'bad' : 'ghost'}">${m.status === 'live' ? 'jonli' : 'yakunlangan'}</span></div>`).join('') || '<p class="muted small">Yo‘q</p>'}
+      <div class="row" style="margin-top:20px;justify-content:space-between"><button class="btn bad sm" id="del">${ic('trash')} Room’ni o‘chirish</button><a class="btn" href="/room/${s.code}#admin=${d.adminKey}" target="_blank" rel="noopener">${ic('arrow')} Admin sifatida ochish</a></div>`;
+    $('#modal').classList.remove('hidden');
+    $('#mx').onclick = () => $('#modal').classList.add('hidden');
+    $('#del').onclick = async () => { if (!confirm(`${s.company} butunlay o‘chirilsinmi? Qaytarib bo‘lmaydi.`)) return; await sapi('/api/super/rooms/' + code, { method: 'DELETE' }); $('#modal').classList.add('hidden'); load(); };
+  }
+  $('#modal').onclick = (e) => { if (e.target.id === 'modal') e.target.classList.add('hidden'); };
+  $('#logout').onclick = () => { store.del('wr:super'); location.reload(); };
+  $('#root').dataset.login = $('#root').innerHTML; bindLogin();
+  if (KEY) load();
+}
+</script>
+</body>
+</html>

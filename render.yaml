@@ -1,0 +1,33 @@
+# Render Blueprint: Dashboard → New → Blueprint → shu repo
+services:
+  - type: web
+    name: workroom-ai
+    runtime: node
+    plan: starter            # Disk faqat pullik tarifda ishlaydi (ma'lumotlar o'chmasligi uchun shart)
+    buildCommand: npm ci --omit=dev || npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data
+      - key: SUPER_ADMIN_KEY
+        generateValue: true   # Render o'zi uzun tasodifiy kalit yaratadi (Environment bo'limida ko'rasiz)
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TURN_URL
+        sync: false
+      - key: TURN_USER
+        sync: false
+      - key: TURN_PASS
+        sync: false
+    disk:
+      name: workroom-data
+      mountPath: /var/data
+      sizeGB: 1

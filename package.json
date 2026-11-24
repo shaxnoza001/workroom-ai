@@ -1,0 +1,17 @@
+{
+  "name": "workroom-ai",
+  "version": "3.0.0",
+  "description": "WORKROOM AI \u2014 Biznesingiz uchun avtonom raqamli ofis (Face ID davomat, video-majlis, o'zbekcha Meeting AI)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && for f in public/js/*.js; do node --check $f; done"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}

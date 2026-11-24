@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WORKROOM AI — Biznesingiz uchun avtonom raqamli ofis</title>
+<meta name="description" content="Face ID davomat, o‘zbekcha Meeting AI, AI Mentor, AI Assistant va Smart KPI — bitta yopiq Room’da.">
+<meta name="theme-color" content="#070b17">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+<script>try{document.documentElement.dataset.theme=JSON.parse(localStorage.getItem('wr:theme'))||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){document.documentElement.dataset.theme='dark'}</script>
+<link rel="stylesheet" href="/css/style.css">
+<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/icon.svg"><meta name="apple-mobile-web-app-capable" content="yes">
+</head>
+<body class="landing">
+<div class="scrollbar" id="sbar"></div>
+<div class="mesh"></div><div class="gridbg"></div>
+<nav class="nav">
+  <a href="#" class="logo"><i>W</i> WORKROOM AI</a>
+  <div class="links"><a href="#muammo">Muammo</a><a href="#modullar">Modullar</a><a href="#kimlar">Kimlar uchun</a><a href="#narx">Narxlar</a><a href="#majlis">Majlis AI</a><a href="#assistant">Assistant</a></div>
+  <div class="row"><span data-theme-btn=""></span><button class="btn ghost sm" onclick="openJoin()">Roomga kirish</button><button class="btn sm" onclick="openCreate()">Room ochish</button></div>
+</nav>
+
+<header class="hero">
+  <div>
+    <span class="badge fadeup"><span class="dot"></span> Raqamli Avlod Qizlari 2026</span>
+    <h1>Biznesingiz uchun <span class="hl">avtonom raqamli ofis</span></h1>
+    <p class="lead fadeup" style="animation-delay:.6s">HR, nazorat va buxgalteriya — bitta xavfsiz AI xonada. Davomat Face ID bilan, majlislarni AI o‘zbekcha tinglab vazifaga aylantiradi, yangi xodimni AI Mentor o‘qitadi, maosh esa o‘zi hisoblanadi.</p>
+    <div class="row">
+      <button class="btn lg magnetic" onclick="openCreate()">Bepul Room ochish <span data-ic="arrow"></span></button>
+      <button class="btn sec lg" onclick="openJoin()"><span data-ic="key"></span> Kompaniya kodi bilan kirish</button>
+    </div>
+    <div class="trust"><span><span data-ic="shield"></span> Maxsus Face ID qurilmasi shart emas</span><span><span data-ic="clock"></span> 14 kun bepul</span><span><span data-ic="users"></span> 15 xodimgacha $0</span></div>
+  </div>
+  <div class="mock" aria-hidden="true" id="mock">
+    <div class="orbit o1"></div><div class="orbit o2"></div>
+    <div class="tilt" id="tilt">
+    <div class="win">
+      <div class="bar"><b></b><b></b><b></b><span class="small muted" style="margin-left:8px">workroom.ai/room/UZ2026</span></div>
+      <div class="body">
+        <div class="row between"><b style="font-family:var(--head)">Bugun · 09:04</b><span class="badge ok"><span class="dot"></span> jonli</span></div>
+        <div class="kpis"><div><span class="small muted">Keldi</span><strong style="color:var(--mint)"><span id="hk-in">12</span><span class="small muted">/21</span></strong></div><div><span class="small muted">Kechikdi</span><strong style="color:var(--warn)" id="hk-late">1</strong></div><div><span class="small muted">Kasal</span><strong style="color:var(--bad)">1</strong></div></div>
+        <div class="ai"><div class="small" style="color:var(--acc-ink);display:flex;gap:6px;align-items:center"><span data-ic="spark"></span> AI Assistant</div><div style="margin:6px 0 10px">“Malika bugun kasal. 3 ta vazifasini Nigoraga o‘tkazaymi?”</div><div class="row"><span class="btn ok sm">Ha, o‘tkaz</span><span class="btn ghost sm">Yo‘q</span></div></div>
+        <div class="feedx" id="hfeed"></div>
+      </div>
+    </div>
+    <div class="phone"><div class="face"></div><div class="small center" style="margin-top:8px" id="hphone"><b>Xush kelibsiz, Aziz</b><br><span class="muted">08:52 · o‘z vaqtida</span></div></div>
+    </div>
+  </div>
+</header>
+
+<div class="marquee" aria-label="Kimlar uchun"><div class="track"><span><span data-ic="book"></span>O‘quv markazlari</span><span><span data-ic="shield"></span>Klinikalar</span><span><span data-ic="screen"></span>IT agentliklar</span><span><span data-ic="building"></span>Ishlab chiqarish</span><span><span data-ic="users"></span>Savdo jamoalari</span><span><span data-ic="wallet"></span>Do‘kon va filiallar</span><span><span data-ic="calendar"></span>Maktablar</span><span><span data-ic="phone"></span>Call-markazlar</span><span><span data-ic="book"></span>O‘quv markazlari</span><span><span data-ic="shield"></span>Klinikalar</span><span><span data-ic="screen"></span>IT agentliklar</span><span><span data-ic="building"></span>Ishlab chiqarish</span><span><span data-ic="users"></span>Savdo jamoalari</span><span><span data-ic="wallet"></span>Do‘kon va filiallar</span><span><span data-ic="calendar"></span>Maktablar</span><span><span data-ic="phone"></span>Call-markazlar</span></div></div>
+
+<section class="section reveal" id="muammo">
+  <h2>Muammo — O‘zbek kompaniyasida oddiy Dushanba</h2>
+  <p class="sub">Operatsion tartibsizlik har kuni vaqt va pulni yeydi.</p>
+  <div class="day">
+    <div class="card"><span class="t">09:00</span><h3>Nazoratsiz start</h3><p class="muted small">Kim keldi, kim kechikdi — rahbar bexabar; nazorat qog‘ozda.</p></div>
+    <div class="card"><span class="t">11:00</span><h3>Vaqt isrofi</h3><p class="muted small">Kuchli mutaxassis loyihani tashlab, yangi xodimni o‘qitadi.</p></div>
+    <div class="card"><span class="t">15:00</span><h3>Natijasiz majlis</h3><p class="muted small">Bir soatlik majlisdan so‘ng vazifalar va muddatlar noaniq.</p></div>
+    <div class="card"><span class="t">Oy oxiri</span><h3>Tungi Excel</h3><p class="muted small">Davomat, jarima va maosh tuni bilan qo‘lda hisoblanadi.</p></div>
+  </div>
+</section>
+
+<div class="band"><section class="section">
+  <h2>Yechim — 1 kompaniya = 1 yopiq Room</h2>
+  <p class="sub">Har bir korxona uchun himoyalangan muhit va maxsus kirish kodi.</p>
+  <div class="steps3">
+    <div class="card"><h3>Rahbar Room ochadi</h3><p class="muted small" style="margin-top:6px">Kompaniya nomi, ish vaqti va xodimlar ro‘yxati — 1 daqiqa.</p></div>
+    <div class="card"><h3>Hammaning yuzi skaner qilinadi</h3><p class="muted small" style="margin-top:6px">Room ochilayotganda kamera navbat bilan har bir xodimni ro‘yxatga oladi.</p></div>
+    <div class="card"><h3>“Kompaniya kodini kiriting: #UZ2026”</h3><p class="muted small" style="margin-top:6px">Xodimlar shu kod bilan o‘z telefonidan kiradi — o‘rnatish shart emas.</p></div>
+  </div>
+</section></div>
+
+<section class="section reveal" id="modullar">
+  <h2>Ekotizim arxitekturasi: 5 ta asosiy modul</h2>
+  <p class="sub">Markaziy AI miya barcha ichki jarayonlarni real vaqt rejimida bog‘laydi.</p>
+  <div class="brain reveal" id="brain" aria-label="AI miya va 5 ta modul sxemasi"></div>
+  <div class="mods">
+    <div class="card mod mint"><div class="ic"><span data-ic="scan" class="lg"></span></div><h3>Face ID davomat</h3><p>Platforma ichida, istalgan telefon yoki noutbuk kamerasida. Keldi-ketdi va kechikish daqiqasi avtomatik, Telegram’ga darhol xabar.</p></div>
+    <div class="card mod"><div class="ic"><span data-ic="video" class="lg"></span></div><h3>Meeting AI</h3><p>Ichki video-majlis (Zoom shart emas). AI o‘zbekcha tinglaydi, xulosa va “kim — nima — qachongacha” vazifalar ro‘yxatini chiqaradi.</p></div>
+    <div class="card mod"><div class="ic"><span data-ic="brain" class="lg"></span></div><h3>AI Mentor</h3><p>Yangi xodim savolini kompaniya bilim bazasi asosida Gemini javob beradi — tajribali mutaxassis o‘z ishida qoladi.</p></div>
+    <div class="card mod wide"><div><div class="ic"><span data-ic="spark" class="lg"></span></div><h3>AI Assistant · 1-Click tasdiqlash</h3><p>Kutilmagan vaziyatda tizim to‘xtab qolmaydi: AI o‘rinbosar va resursni hisoblaydi, rahbar telefondan bir bosishda tasdiqlaydi.</p></div>
+      <div class="notif"><div class="small muted" style="display:flex;gap:6px;align-items:center"><span data-ic="bell"></span> Tizim bildirishnomasi</div><div style="margin-top:6px">“Malika bugun kasal. Vazifasini Nigoraga o‘tkazaymi?”</div><div class="row"><span class="btn ok sm">Ha</span><span class="btn ghost sm">Boshqa xodim</span></div></div></div>
+    <div class="card mod warn"><div class="ic"><span data-ic="wallet" class="lg"></span></div><h3>Smart KPI & AI Buxgalter</h3><p>Face ID davomat + Meeting AI natijalari = avtomatik KPI, jarima, bonus va maosh. Excel’ga bir tugmada.</p></div>
+  </div>
+</section>
+
+<section class="section reveal" id="majlis">
+  <h2>Majlisdan vazifaga — <span class="glow-text">gapirdingiz, tayyor</span></h2>
+  <p class="sub">Onlayn video yoki xonadagi oflayn majlis: AI o‘zbekcha tinglaydi, kim nima deganini ajratadi va mas’ul hamda muddat bilan vazifalarni chiqaradi.</p>
+  <div class="flow">
+    <div class="card"><div class="row between"><h3 style="display:flex;gap:8px;align-items:center"><span class="live-dot"></span> Majlis · jonli transkript</h3><span class="badge warn">oflayn · stol ustida</span></div><div id="tr" style="margin-top:10px"></div></div>
+    <div class="arrow"><div class="orb"><span data-ic="brain" class="xl"></span></div></div>
+    <div class="card"><div class="row between"><h3>AI topgan vazifalar</h3><span class="badge ok" id="tcount">0 ta</span></div><div id="tk" style="margin-top:12px"></div><button class="btn ok sm hidden" id="tok" style="margin-top:6px"><span data-ic="check"></span> 1-Click tasdiqlash</button></div>
+  </div>
+</section>
+
+<div class="band"><section class="section reveal" id="assistant">
+  <h2>Xodim kelmadi? <span class="glow-text">AI o‘rinbosar topadi</span> va javob oladi</h2>
+  <p class="sub">Siz hech narsa qilmaysiz: Assistant kelmaganni aniqlaydi, Telegram’da sababini so‘raydi, eng mos hamkasbni topadi — siz faqat “Ha” bosasiz. Avtopilotda esa o‘zi hal qiladi.</p>
+  <div class="story" id="story">
+    <div class="st"><span class="tm">09:00</span><h4>Ish boshlandi</h4><p>Face ID: 18/21 xodim keldi, 2 kishi kechikdi.</p></div>
+    <div class="st"><span class="tm">09:15</span><h4>Aziz kelmadi</h4><p>Belgilanmagan va xabar bermagan — Assistant aniqladi.</p></div>
+    <div class="st"><span class="tm">09:16</span><h4>Bot sababini so‘radi</h4><div class="msg">Aziz, bugun belgilanmadingiz. Sababi?</div><div class="btns"><span>Kasalman</span><span>Kechikyapman</span><span>Ta’til</span></div></div>
+    <div class="st"><span class="tm">09:17</span><h4>O‘rinbosar topildi</h4><p>Dilshod — bir xil lavozim, eng kam band, bugun ishda.</p></div>
+    <div class="st"><span class="tm">09:18</span><h4>1-Click → hal</h4><div class="msg">“Azizning 3 ta vazifasini Dilshodga o‘tkazaymi?”</div><div class="btns"><span style="background:var(--mint);color:#04261c;border-color:var(--mint)">Ha, o‘tkaz</span></div></div>
+  </div>
+</section></div>
+
+<section class="section reveal">
+  <div class="nums">
+    <div><strong data-to="60" data-suf=" soniya">0</strong><span>Room ochish va kod olish</span></div>
+    <div><strong data-to="5" data-suf=" modul">0</strong><span>bitta AI miyada</span></div>
+    <div><strong data-to="3" data-suf=" xil">0</strong><span>majlis: onlayn, xonada, audio fayl</span></div>
+    <div><strong>24/7</strong><span>Telegram orqali nazorat</span></div>
+  </div>
+</section>
+
+<div class="band"><section class="section reveal" id="kimlar">
+  <h2>Kimlar uchun</h2>
+  <p class="sub">10 dan 200 nafargacha xodimi bo‘lgan, tez kengayayotgan O‘zbekiston korxonalari.</p>
+  <div class="aud">
+    <div class="card"><span data-ic="book" class="xl" style="color:var(--acc-ink)"></span><h3 style="margin:10px 0 6px">O‘quv markazlari va maktablar</h3><p class="muted small">O‘qituvchi va ma’murlar davomati, dars jadvali, intizom nazorati.</p></div>
+    <div class="card"><span data-ic="shield" class="xl" style="color:var(--mint)"></span><h3 style="margin:10px 0 6px">Klinikalar va xizmat ko‘rsatish</h3><p class="muted small">Navbatchilik smenalari, o‘rinbosarlik mexanizmi, mijozlar oqimi.</p></div>
+    <div class="card"><span data-ic="screen" class="xl" style="color:var(--warn)"></span><h3 style="margin:10px 0 6px">IT kompaniyalar va agentliklar</h3><p class="muted small">Gibrid jamoalar, loyiha topshiriqlari, sprint majlislari protokoli.</p></div>
+  </div>
+</section></div>
+
+<section class="section reveal" id="narx">
+  <h2>Biznes model: B2B SaaS</h2>
+  <p class="sub">Har bir kompaniya hajmiga moslashuvchan, shaffof oylik obuna.</p>
+  <div class="grid g3" style="margin-top:28px">
+    <div class="card price"><span class="muted">START</span><h3 class="p">$0</h3><span class="muted small">15 nafargacha xodim</span><ul><li><span data-ic="check"></span>14 kunlik to‘liq sinov</li><li><span data-ic="check"></span>Face ID davomat</li><li><span data-ic="check"></span>AI Assistant asosiy funksiyalari</li></ul><button class="btn sec" onclick="openCreate()">Boshlash</button></div>
+    <div class="card price pop"><span class="badge" style="align-self:flex-start">Eng mashhur</span><div class="muted" style="margin-top:8px">BUSINESS</div><h3 class="p">$3 <span class="small muted">/xodim/oy</span></h3><span class="muted small">O‘suvchi korxonalar tanlovi</span><ul><li><span data-ic="check"></span>Barcha 5 ta AI modul</li><li><span data-ic="check"></span>Meeting AI o‘zbekcha transkripsiya</li><li><span data-ic="check"></span>Smart KPI & AI Buxgalter</li></ul><button class="btn" onclick="openCreate()">14 kun bepul sinash</button></div>
+    <div class="card price"><span class="muted">ENTERPRISE</span><h3 class="p">Custom</h3><span class="muted small">Katta korporatsiyalar uchun</span><ul><li><span data-ic="check"></span>Alohida server (on-premise)</li><li><span data-ic="check"></span>Bank va ERP integratsiyalari</li><li><span data-ic="check"></span>24/7 shaxsiy AI kurator</li></ul><a class="btn sec" href="mailto:info@workroom.ai">info@workroom.ai</a></div>
+  </div>
+</section>
+
+
+
+<section class="section">
+  <div class="cta">
+    <div><h2>Tartibsizlikni o‘chiring.<br>Biznesingizga raqamli miya o‘rnating.</h2><p style="margin-top:10px;color:#c7d0f5">Pilot sinov uchun: info@workroom.ai</p></div>
+    <div class="row" style="justify-content:flex-end"><button class="btn ok lg magnetic" onclick="openCreate()">Room ochish <span data-ic="arrow"></span></button></div>
+  </div>
+</section>
+
+<footer class="footer"><span class="logo" style="font-size:14px"><i>W</i> WORKROOM AI · 2026</span><span>Muallif: Komilov · <a href="/admin">Platforma admin</a></span></footer>
+
+<!-- CREATE ROOM WIZARD -->
+<div id="create" class="modal-bg hidden">
+  <div class="card modal">
+    <div class="steps"><div></div><div></div><div></div><div></div></div>
+
+    <div data-step="1">
+      <h2>Room ochish</h2>
+      <p class="muted small">Kompaniyangiz uchun yopiq raqamli ofis.</p>
+      <label>Kompaniya nomi</label><input id="c-company" placeholder="Masalan: Turon Trade">
+      <label>Rahbar (admin) ismi</label><input id="c-admin" placeholder="Ism Familiya">
+      <div class="grid g2"><div><label>Ish boshlanishi</label><input id="c-start" type="time" value="09:00"></div><div><label>Ish tugashi</label><input id="c-end" type="time" value="18:00"></div></div>
+      <div class="row" style="margin-top:18px;justify-content:flex-end"><button class="btn sec" onclick="closeM('create')">Bekor</button><button class="btn" onclick="step1()">Davom etish →</button></div>
+    </div>
+
+    <div data-step="2" class="hidden">
+      <h2>Xodimlarni qo‘shing</h2>
+      <p class="muted small">Room ochilayotganda hammaning yuzi skaner qilinadi. Hozir hamma ofisda bo‘lmasa — keyin ham qo‘shish mumkin.</p>
+      <div id="emp-rows" style="margin-top:10px"></div>
+      <button class="btn sec sm" style="margin-top:10px" onclick="addRow()">+ Xodim qo‘shish</button>
+      <div class="row" style="margin-top:18px;justify-content:flex-end"><button class="btn" onclick="step2()">Yuz skaneriga o‘tish →</button></div>
+    </div>
+
+    <div data-step="3" class="hidden">
+      <h2>Face ID skaner</h2>
+      <p class="muted small" id="scan-who">Model yuklanmoqda…</p>
+      <div class="cam" style="margin-top:10px"><video id="w-video"></video><canvas id="w-canvas"></canvas><div class="ring" id="w-ring"></div><div class="scan-line"></div><div class="msg" id="w-msg">Kamera ochilmoqda…</div></div>
+      <div class="progress" style="margin-top:10px"><i id="w-prog" style="width:0"></i></div>
+      <div class="queue" id="w-queue"></div>
+      <div class="row" style="margin-top:16px;justify-content:space-between"><button class="btn ghost sm" onclick="skipFace()">O‘tkazib yuborish</button><button class="btn sec sm" onclick="finishScan()">Keyinroq skaner qilaman →</button></div>
+    </div>
+
+    <div data-step="4" class="hidden center">
+      <h2>Room tayyor!</h2>
+      <p class="muted">Xodimlar shu kod bilan o‘z telefonidan kiradi:</p>
+      <div class="code-big" id="done-code"></div>
+      <p class="small muted" id="done-stat"></p>
+      <div class="row" style="justify-content:center;margin-top:16px"><button class="btn sec" onclick="copyLink()">Havolani nusxalash</button><button class="btn" onclick="goRoom()">Admin panelga o‘tish →</button></div>
+      <p class="small muted" style="margin-top:14px">Admin kaliti shu qurilmada saqlandi. Boshqa qurilmadan admin sifatida kirish uchun: Sozlamalar → “Admin havolasi”.</p>
+    </div>
+  </div>
+</div>
+
+<!-- JOIN -->
+<div id="join" class="modal-bg hidden">
+  <div class="card modal">
+    <div id="j1">
+      <h2>Roomga kirish</h2>
+      <label>Kompaniya kodi</label><input id="j-code" placeholder="#UZ2026" style="text-transform:uppercase;font-size:20px;letter-spacing:2px">
+      <label>Ismingiz</label><input id="j-name" placeholder="Ism Familiya">
+      <div class="row" style="margin-top:18px;justify-content:flex-end"><button class="btn sec" onclick="closeM('join')">Bekor</button><button class="btn" onclick="join()">Kirish →</button></div>
+    </div>
+    <div id="j2" class="hidden">
+      <h2>Yuzingizni skaner qiling</h2>
+      <p class="muted small">Bir marta — keyin davomat shu yuz orqali olinadi.</p>
+      <div class="cam" style="margin-top:10px"><video id="j-video"></video><canvas id="j-canvas"></canvas><div class="ring" id="j-ring"></div><div class="scan-line"></div><div class="msg" id="j-msg">Kamera ochilmoqda…</div></div>
+      <div class="progress" style="margin-top:10px"><i id="j-prog" style="width:0"></i></div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/common.js"></script>
+<script src="/js/face.js"></script>
+<script src="/js/landing.js"></script>
+<script>
+const { $, $$, api, toast, setSession, session, esc } = WR;
+document.querySelectorAll('[data-ic]').forEach((el) => (el.outerHTML = WR.ic(el.dataset.ic, el.className)));
+let W = { code: null, people: [], idx: 0, stream: null, abort: null };
+
+function showStep(n) {
+  $$('#create [data-step]').forEach((el) => el.classList.toggle('hidden', el.dataset.step != n));
+  $$('#create .steps div').forEach((d, i) => d.classList.toggle('on', i < n));
+}
+function openCreate() { $('#create').classList.remove('hidden'); showStep(1); }
+function closeM(id) { $('#' + id).classList.add('hidden'); if (W.abort) W.abort.abort(); Face.stopCam(W.stream); }
+function addRow(n = '', r = '', s = '') {
+  const d = document.createElement('div'); d.className = 'row'; d.style.marginBottom = '8px';
+  d.innerHTML = `<input class="grow" placeholder="Ism" value="${esc(n)}" style="flex:2"><input placeholder="Lavozim" value="${esc(r)}" style="flex:1.3"><input placeholder="Maosh" type="number" value="${esc(s)}" style="flex:1"><button class="btn ghost sm" onclick="this.parentNode.remove()">✕</button>`;
+  $('#emp-rows').appendChild(d);
+}
+async function step1() {
+  const company = $('#c-company').value.trim(), adminName = $('#c-admin').value.trim();
+  if (!company || !adminName) return toast('Kompaniya nomi va ismingizni kiriting');
+  try {
+    const j = await api('/api/rooms', { method: 'POST', body: { company, adminName, workStart: $('#c-start').value, workEnd: $('#c-end').value } });
+    W.code = j.code; setSession(j.code, { adminKey: j.adminKey, empId: j.empId, empKey: j.empKey, name: adminName });
+    W.people = [{ id: j.empId, name: adminName }];
+    $('#emp-rows').innerHTML = ''; addRow(); addRow(); addRow();
+    showStep(2);
+  } catch (e) { toast(e.message); }
+}
+async function step2() {
+  const rows = $$('#emp-rows .row').map((r) => { const i = $$('input', r); return { name: i[0].value.trim(), role: i[1].value.trim() || 'Xodim', salary: Number(i[2].value) || 0 }; }).filter((x) => x.name);
+  for (const r of rows) {
+    try { const j = await api(`/api/rooms/${W.code}/employees`, { method: 'POST', body: r }, W.code); W.people.push({ id: j.employee.id, name: r.name }); }
+    catch (e) { toast(e.message); }
+  }
+  showStep(3); startScan();
+}
+function renderQueue() {
+  $('#w-queue').innerHTML = W.people.map((p, i) => `<span class="${p.done ? 'done' : i === W.idx ? 'cur' : ''}">${p.done ? '✓ ' : ''}${esc(p.name)}</span>`).join('');
+}
+async function startScan() {
+  renderQueue();
+  try {
+    $('#w-msg').textContent = 'Face ID modeli yuklanmoqda…';
+    await Face.load();
+    W.stream = await Face.startCam($('#w-video'));
+    scanNext();
+  } catch (e) { $('#w-msg').textContent = e.message; $('#scan-who').textContent = 'Kamera ruxsatini bering yoki “Keyinroq” tugmasini bosing.'; }
+}
+async function scanNext() {
+  if (W.idx >= W.people.length) return finishScan();
+  const p = W.people[W.idx]; renderQueue();
+  $('#scan-who').innerHTML = `Navbat: <b>${esc(p.name)}</b> — kameraga to‘g‘ri qarang (${W.idx + 1}/${W.people.length})`;
+  $('#w-prog').style.width = '0'; $('#w-ring').classList.remove('ok');
+  W.abort = new AbortController();
+  try {
+    const res = await Face.enroll($('#w-video'), $('#w-canvas'), {
+      signal: W.abort.signal,
+      onStatus: (m) => ($('#w-msg').textContent = m),
+      onProgress: (x) => ($('#w-prog').style.width = x * 100 + '%'),
+    });
+    $('#w-ring').classList.add('ok');
+    await api(`/api/rooms/${W.code}/employees/${p.id}/face`, { method: 'PUT', body: res }, W.code);
+    p.done = true; $('#w-msg').textContent = `✓ ${p.name} ro‘yxatdan o‘tdi`;
+    W.idx++; setTimeout(scanNext, 1300);
+  } catch (e) {
+    if (e.message === 'bekor') return;
+    toast(e.message); $('#w-msg').textContent = e.message + ' — qayta urinilmoqda'; setTimeout(scanNext, 2000);
+  }
+}
+function skipFace() { if (W.abort) W.abort.abort(); W.idx++; setTimeout(scanNext, 50); }
+function finishScan() {
+  if (W.abort) W.abort.abort(); Face.stopCam(W.stream);
+  const done = W.people.filter((p) => p.done).length;
+  $('#done-code').textContent = '#' + W.code;
+  $('#done-stat').textContent = `${W.people.length} kishi qo‘shildi, ${done} tasi Face ID’dan o‘tdi.`;
+  showStep(4);
+}
+function copyLink() { navigator.clipboard.writeText(location.origin + '/room/' + W.code).then(() => toast('Nusxalandi')); }
+function goRoom() { location.href = '/room/' + W.code; }
+
+// JOIN
+let J = {};
+function openJoin() { $('#join').classList.remove('hidden'); $('#j1').classList.remove('hidden'); $('#j2').classList.add('hidden'); const l = WR.store.get('wr:last'); if (l) $('#j-code').value = l; }
+async function join() {
+  const code = $('#j-code').value.trim().toUpperCase().replace('#', ''); const name = $('#j-name').value.trim();
+  if (!code) return toast('Kodni kiriting');
+  const s = session(code);
+  if (s.empKey && (!name || name.toLowerCase() === (s.name || '').toLowerCase())) return (location.href = '/room/' + code);
+  if (!name) return toast('Ismingizni kiriting');
+  try {
+    const j = await api(`/api/rooms/${code}/join`, { method: 'POST', body: { name } });
+    setSession(code, { empId: j.empId, empKey: j.empKey, name, adminKey: s.adminKey });
+    J = { code, empId: j.empId };
+    $('#j1').classList.add('hidden'); $('#j2').classList.remove('hidden');
+    await Face.load(); J.stream = await Face.startCam($('#j-video'));
+    J.abort = new AbortController(); W.abort = J.abort; W.stream = J.stream;
+    const res = await Face.enroll($('#j-video'), $('#j-canvas'), { signal: J.abort.signal, onStatus: (m) => ($('#j-msg').textContent = m), onProgress: (x) => ($('#j-prog').style.width = x * 100 + '%') });
+    await api(`/api/rooms/${code}/employees/${j.empId}/face`, { method: 'PUT', body: res }, code);
+    $('#j-ring').classList.add('ok'); Face.stopCam(J.stream); toast('Face ID saqlandi ✓');
+    setTimeout(() => (location.href = '/room/' + code), 900);
+  } catch (e) { if (e.message !== 'bekor') toast(e.message); }
+}
+if (location.hash === '#join') openJoin();
+if (location.hash === '#create') openCreate();
+</script>
+</body>
+</html>
