@@ -14,7 +14,7 @@ const socket = io();
 const joinRoom = () => { const s = session(CODE); socket.emit('room:join', { code: CODE, key: s.adminKey || s.empKey }); };
 
 const MENU_ADMIN = [
-  ['home', 'home', 'Boshqaruv'], ['kiosk', 'scan', 'Face ID'], ['meetings', 'video', 'Majlislar'], ['mentor', 'brain', 'AI Mentor'],
+  ['home', 'home', 'Boshqaruv'], ['assistant', 'spark', 'AI Assistant'], ['kiosk', 'scan', 'Face ID'], ['meetings', 'video', 'Majlislar'], ['mentor', 'brain', 'AI Mentor'],
   ['tasks', 'check', 'Vazifalar'], ['people', 'users', 'Xodimlar'], ['kpi', 'wallet', 'KPI & Maosh'], ['kb', 'book', 'Bilim bazasi'], ['settings', 'settings', 'Sozlamalar'],
 ];
 const MENU_EMP = [['home', 'home', 'Bosh sahifa'], ['kiosk', 'scan', 'Face ID'], ['mentor', 'brain', 'AI Mentor'], ['meetings', 'video', 'Majlislar'], ['tasks', 'check', 'Vazifalarim']];
@@ -37,8 +37,8 @@ async function boot() {
   $('#me-name').textContent = (S.me ? S.me.name : 'Admin') + (S.admin ? ' · admin' : '');
   const menu = S.admin ? MENU_ADMIN : MENU_EMP;
   $('#menu').innerHTML = menu.map(([v, i, t]) => `<button data-v="${v}">${ic(i)} ${t}</button>`).join('');
-  const bn = S.admin ? menu.filter((m) => ['home', 'kiosk', 'meetings', 'mentor', 'tasks', 'people'].includes(m[0])) : menu;
-  $('#bnav').innerHTML = bn.map(([v, i, t]) => `<button data-v="${v}">${ic(i, 'lg')}${t.split(' ')[0] === 'AI' ? 'Mentor' : t.split(' ')[0]}</button>`).join('');
+  const bn = S.admin ? menu.filter((m) => ['home', 'assistant', 'kiosk', 'meetings', 'mentor', 'people'].includes(m[0])) : menu;
+  $('#bnav').innerHTML = bn.map(([v, i, t]) => `<button data-v="${v}">${ic(i, 'lg')}${t.startsWith('AI ') ? t.slice(3) : t.split(' ')[0]}</button>`).join('');
   $$('[data-v]').forEach((b) => (b.onclick = () => go(b.dataset.v)));
   await loadTasks();
   Offline.sync(true);
@@ -71,7 +71,7 @@ function go(v, arg) {
   S.view = v;
   $$('[data-v]').forEach((b) => b.classList.toggle('on', b.dataset.v === v || (v === 'live' && b.dataset.v === 'meetings')));
   window.scrollTo(0, 0);
-  ({ home, kiosk, people, meetings, tasks, kpi, settings, mentor, kb, offline: (t) => Offline.open(t), live: (id) => Meeting.open(id), meeting: meetingDetail })[v](arg);
+  ({ home, assistant, kiosk, people, meetings, tasks, kpi, settings, mentor, kb, offline: (t) => Offline.open(t), live: (id) => Meeting.open(id), meeting: meetingDetail })[v](arg);
 }
 const emp = (id) => S.room.employees.find((e) => e.id === id);
 async function loadTasks() { S.tasks = (await api(`/api/rooms/${CODE}/tasks`, {}, CODE)).tasks; }
@@ -101,10 +101,12 @@ async function home() {
         <div class="card stat"><div class="l">${ic('check')} Ochiq vazifalar</div><div class="n">${open.length}</div></div>
       </div>
       <div class="row" style="margin:18px 0"><button class="btn" onclick="go('kiosk')">${ic('scan')} Face ID bilan belgilash</button><button class="btn sec" onclick="go('mentor')">${ic('brain')} AI Mentor’dan so‘rash</button><button class="btn ghost" onclick="absenceModal(S.me.id)">${ic('sick')} Bugun kela olmayman</button></div>
+      <div id="my-subs"></div>
       <div class="grid g2"><div class="card"><h3 style="margin-bottom:6px">Vazifalarim</h3>${open.length ? open.map(taskLine).join('') : empty('check', 'Ochiq vazifa yo‘q')}</div>
       <div><div class="card"><h3>E’lonlar</h3><div id="posts"></div></div>
       ${S.me.tg ? '' : `<div class="card" style="margin-top:16px"><h3 style="display:flex;gap:8px;align-items:center">${ic('telegram')} Telegram’ni ulang</h3><p class="small muted" style="margin-top:6px">Vazifa, e’lon va o‘rinbosarlik xabarlari Telegram’ga keladi; kelolmasangiz bot sababini so‘raydi. Kompaniya botiga yuboring:</p><div class="code-big" style="font-size:16px;letter-spacing:1px">${esc(S.myLink || '')}</div></div>`}</div></div>`;
     loadPosts();
+    api(`/api/rooms/${CODE}/my-subs`, {}, CODE).then((j) => { const el = $('#my-subs'); if (el && j.subs.length) el.innerHTML = `<div class="card assist" style="margin-bottom:16px"><h3 style="display:flex;gap:8px;align-items:center">${ic('spark')} AI Assistant</h3>${j.subs.map((g) => `<p style="margin-top:8px">Bugun siz <b>${esc(g.name)}</b> o‘rniga mas’ulsiz (${esc(g.reason)}). Uning vazifalari “Vazifalarim”da.</p>`).join('')}</div>`; }).catch(() => {});
     return;
   }
   let as = { suggestions: [], absences: [] };
@@ -151,6 +153,41 @@ async function briefModal() {
   try { const j = await api(`/api/rooms/${CODE}/brief`, {}, CODE); $('#brief').innerHTML = `<div style="white-space:pre-wrap;line-height:1.65">${esc(j.text)}</div><p class="small muted" style="margin-top:12px">${j.ai ? 'Gemini tomonidan tayyorlandi' : 'Shablon (Gemini kaliti qo‘shilsa — AI tahlili)'} · ish tugaganda Telegram’ga avtomatik yuboriladi.</p><button class="btn sec" style="margin-top:12px" onclick="navigator.clipboard.writeText($('#brief div').textContent).then(()=>toast('Nusxalandi'))">${ic('link')} Nusxalash</button>`; }
   catch (e) { $('#brief').textContent = e.message; }
 }
+// ---------- AI ASSISTANT ----------
+async function assistant() {
+  const [as, hist] = await Promise.all([api(`/api/rooms/${CODE}/assistant`, {}, CODE), api(`/api/rooms/${CODE}/assistant-history`, {}, CODE)]);
+  const list = S.room.employees.filter((e) => !e.pending);
+  $('#view').innerHTML = `
+    <div class="top"><div><h1>AI Assistant</h1><div class="sub">Kelmaganlarni aniqlaydi, Telegram’da sababini so‘raydi, eng mos o‘rinbosarni topadi — siz bir bosishda tasdiqlaysiz.</div></div>
+      <button class="btn" id="as-run">${ic('zap')} Hozir tekshirish</button></div>
+    <div class="grid g3 stats">
+      <div class="card stat"><div class="l">${ic('bell')} Kutilayotgan takliflar</div><div class="n">${as.suggestions.length}</div></div>
+      <div class="card stat"><div class="l">${ic('users')} Bugungi o‘rinbosarlar</div><div class="n" style="color:var(--mint)">${(as.subs || []).length}</div></div>
+      <div class="card stat"><div class="l">${ic('sick')} Bugun sababli yo‘q</div><div class="n" style="color:var(--warn)">${as.absences.length}</div></div>
+    </div>
+    <div class="grid g2" style="margin-top:16px">
+      <div class="card assist"><div class="row between"><h3>Takliflar</h3><label class="switch" style="margin:0"><input type="checkbox" id="as-auto" ${as.autopilot ? 'checked' : ''}> Avtopilot</label></div>
+        ${as.suggestions.map(sgHtml).join('') || `<p class="small muted" style="margin-top:10px">Hozircha taklif yo‘q. Ish boshlanganidan ${S.room.graceMin} daqiqa o‘tib, xabarsiz kelmaganlar bo‘lsa — shu yerda paydo bo‘ladi. Darhol tekshirish uchun “Hozir tekshirish”ni bosing.</p>`}
+        ${(as.subs || []).map((g) => `<div class="sg"><div class="ic" style="background:var(--mint-soft);color:var(--mint)">${ic('check')}</div><div class="grow"><b>Bugun ${esc(g.name)} o‘rniga — ${esc(g.toName)}</b><div class="small muted">${esc(g.reason)}${g.auto ? ' · avtopilot' : ''}</div></div></div>`).join('')}
+      </div>
+      <div class="card"><h3>Xodim bugun kela olmaydi</h3><p class="small muted" style="margin-top:4px">Belgilang — AI uning vazifalarini kimga o‘tkazishni darhol taklif qiladi.</p>
+        <label>Xodim</label><select id="as-emp">${list.filter((e) => !e.isAdmin).map((e) => `<option value="${e.id}">${esc(e.name)} — ${esc(e.role)}</option>`).join('')}</select>
+        <label>Sabab</label><select id="as-why"><option value="kasal">kasal</option><option value="ta’til">ta’til</option><option value="uzrli">uzrli</option></select>
+        <button class="btn" style="margin-top:14px" id="as-mark">${ic('spark')} O‘rinbosar topish</button></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>Qanday ishlaydi</h3>
+      <div class="grid g4" style="margin-top:10px">${[['clock', 'Ish boshlanib ' + S.room.graceMin + ' daqiqa o‘tgach', 'Face ID’dan o‘tmagan va xabar bermaganlar aniqlanadi'], ['telegram', 'Telegram’da so‘raydi', 'Botga ulangan xodimdan sababi so‘raladi: kasal, kechikyapti, ta’til'], ['users', 'O‘rinbosar topadi', 'Bir xil lavozim, bugun ishda, eng kam band hamkasb'], ['check', '1-Click', 'Siz “Ha” bosasiz yoki avtopilot o‘zi tayinlaydi; o‘rinbosarga xabar boradi']].map(([i, t, d]) => `<div><div style="color:var(--acc-ink)">${ic(i, 'lg')}</div><b style="display:block;margin-top:6px">${t}</b><p class="small muted">${d}</p></div>`).join('')}</div></div>
+    <div class="card" style="margin-top:16px"><h3>Tarix</h3>${hist.history.map((g) => `<div class="list-item"><span class="badge ${g.status === 'approved' ? 'ok' : 'ghost'}">${g.status === 'approved' ? (g.auto ? 'avtopilot' : 'tasdiqlandi') : 'rad etildi'}</span><div class="grow">${esc(g.text)}<div class="small muted">${g.date}${g.toName && g.status === 'approved' ? ' · o‘rinbosar: ' + esc(g.toName) : ''}</div></div></div>`).join('') || empty('clock', 'Hali tarix yo‘q')}</div>`;
+  $('#as-run').onclick = async () => {
+    try { const r = await api(`/api/rooms/${CODE}/assistant-run`, { method: 'POST' }, CODE); toast(r.found ? `${r.found} ta xabarsiz kelmagan topildi — takliflar tayyor` : `Hamma joyida (${r.came} kishi keldi${r.noFace ? `, ${r.noFace} kishi hali Face ID’siz` : ''})`, 5000); assistant(); }
+    catch (e) { toast(e.message); }
+  };
+  $('#as-auto').onchange = async (e) => { try { const j = await api(`/api/rooms/${CODE}/settings`, { method: 'PATCH', body: { autopilot: e.target.checked } }, CODE); S.room = j.room; toast(e.target.checked ? 'Avtopilot yoqildi' : 'Avtopilot o‘chirildi'); } catch (er) { toast(er.message); } };
+  $('#as-mark').onclick = async () => {
+    try { await api(`/api/rooms/${CODE}/absence`, { method: 'POST', body: { empId: $('#as-emp').value, reason: $('#as-why').value } }, CODE); await loadTasks(); toast('AI o‘rinbosar taklif qildi'); assistant(); }
+    catch (e) { toast(e.message); }
+  };
+}
 const empty = (i, t) => `<div class="empty">${ic(i)}<div>${esc(t)}</div></div>`;
 function sgHtml(g) {
   return `<div class="sg" id="sg-${g.id}"><div class="ic">${ic(g.type === 'reassign' ? 'users' : 'bell')}</div><div class="grow"><b>“${esc(g.text)}”</b>${g.why ? `<div class="small muted">${esc(g.why)}</div>` : ''}
@@ -158,7 +195,7 @@ function sgHtml(g) {
 }
 async function sgAct(id, action, toId) {
   if (toId === '') return;
-  try { const j = await api(`/api/rooms/${CODE}/assistant/${id}`, { method: 'POST', body: { action, toId } }, CODE); await loadTasks(); toast(action === 'approve' && j.suggestion.toName ? `Vazifalar ${j.suggestion.toName}ga o‘tkazildi` : 'Yopildi'); home(); }
+  try { const j = await api(`/api/rooms/${CODE}/assistant/${id}`, { method: 'POST', body: { action, toId } }, CODE); await loadTasks(); toast(action === 'approve' && j.suggestion.toName ? `Bugun ${j.suggestion.toName} o‘rinbosar etib tayinlandi` : 'Yopildi'); go(S.view === 'assistant' ? 'assistant' : 'home'); }
   catch (e) { toast(e.message); }
 }
 function absenceModal(empId) {
@@ -542,7 +579,7 @@ socket.on('attendance', (a) => {
 });
 socket.on('employees', (list) => { if (S.room) S.room.employees = list; if (S.me) S.me = emp(S.me.id) || S.me; });
 socket.on('post', () => loadPosts());
-socket.on('assistant', (g) => { if (S.admin && g && g.text) { if (g.status === 'pending') toast('AI Assistant: ' + g.text, 6000); if (S.view === 'home') home(); } });
+socket.on('assistant', (g) => { if (S.admin && g && g.text) { if (g.status === 'pending') toast('AI Assistant: ' + g.text, 6000); if (S.view === 'home') home(); if (S.view === 'assistant') assistant(); } });
 socket.on('tasks', (t) => { S.tasks = t; if (S.view === 'tasks') tasks(); });
 socket.on('settings', (r) => { S.room = r; if (S.view === 'settings') settings(); });
 socket.on('meeting:started', (m) => { if (S.view !== 'live' && !S.admin) toast(`Majlis boshlandi: ${m.title} — “Majlislar” bo‘limidan qo‘shiling`, 6000); if (S.view === 'meetings') meetings(); });

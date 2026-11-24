@@ -672,7 +672,8 @@ Uning ochiq vazifalari:\n${myTasks || '(yo‘q)'}
     ? `Bilim bazasidan topdim — “${hits[0].title}”:\n\n${hits[0].text.slice(0, 700)}${hits[0].text.length > 700 ? '…' : ''}`
     : 'Bu savolga bilim bazasida javob topilmadi. Rahbaringizdan aniqlashtiring — u javobni bilim bazasiga qo‘shsa, keyingi safar men darhol aytib beraman.';
   const note = !GEMINI_API_KEY ? '\n\n(Aqlli javoblar uchun serverga GEMINI_API_KEY qo‘shing.)' : AI.error ? `\n\n(Gemini xatosi: ${AI.error}. Sozlamalar → Tizim holati.)` : '';
-  res.json({ answer: answer + (isAdmin(req, r) ? note : ''), sources: hits.slice(0, 1).map((k) => k.title), engine: 'qidiruv' });
+  const empNote = GEMINI_API_KEY && AI.error ? '\n\n(AI hozir vaqtincha ishlamayapti — javob bilim bazasidan olindi. Rahbaringizga ayting: Sozlamalar → Tizim holati.)' : !GEMINI_API_KEY ? '\n\n(AI ulanmagan — javob bilim bazasidan olindi.)' : '';
+  res.json({ answer: answer + (isAdmin(req, r) ? note : empNote), sources: hits.slice(0, 1).map((k) => k.title), engine: 'qidiruv' });
 } catch (e) { next(e); } });
 
 // ---------- E'lonlar ----------
@@ -1000,27 +1001,49 @@ async function handleCallback(q) {
 }
 
 // AI Assistant avto-nazorat: ish boshlanib graceMin o'tgach, xabarsiz kelmaganlarni topadi
+function runAutoCheck(r, manual) {
+  const { date } = nowTZ();
+  r.absences = r.absences || []; r.suggestions = r.suggestions || [];
+  const came = new Set(r.attendance.filter((a) => a.date === date && a.type === 'in').map((a) => a.empId));
+  const away = new Set(r.absences.filter((a) => a.date === date).map((a) => a.empId));
+  const already = new Set(r.suggestions.filter((g) => g.date === date && g.source === 'auto').map((g) => g.empId));
+  const missing = r.employees.filter((e) => !e.isAdmin && !e.pending && (e.descriptors || []).length && !came.has(e.id) && !away.has(e.id) && !already.has(e.id));
+  const missIds = new Set(r.employees.filter((e) => !came.has(e.id)).map((e) => e.id));
+  for (const e of missing) {
+    makeSuggestion(r, e, 'xabarsiz kelmadi', 'auto', missIds);
+    if (e.tgChatId) tg('sendMessage', { chat_id: e.tgChatId, text: `Assalomu alaykum, ${e.name}! Bugun ishda belgilanmadingiz. Sababini tanlang — rahbaringizga yetkazaman:`, reply_markup: { inline_keyboard: [[{ text: '🤒 Kasalman', callback_data: `ab:${r.code}:${e.id}:kasal` }, { text: '⏰ Kechikyapman', callback_data: `ab:${r.code}:${e.id}:kech` }], [{ text: '🏖 Ta’tildaman', callback_data: `ab:${r.code}:${e.id}:tatil` }, { text: '📝 Uzrli sabab', callback_data: `ab:${r.code}:${e.id}:uzr` }]] } });
+  }
+  pushEvent(r, 'absence', manual ? 'Rahbar AI Assistant tekshiruvini qo‘lda ishga tushirdi' : 'AI Assistant davomatni tekshirdi');
+  save();
+  const noFace = r.employees.filter((e) => !e.isAdmin && !e.pending && !(e.descriptors || []).length).length;
+  return { found: missing.length, came: came.size, noFace };
+}
 setInterval(() => {
   const { date, time } = nowTZ();
   for (const r of Object.values(db.rooms)) {
-    r.absences = r.absences || []; r.suggestions = r.suggestions || [];
     if (r.autoCheck === date || toMin(time) < toMin(r.workStart) + (r.graceMin || 15)) continue;
     if (toMin(time) > toMin(r.workEnd)) continue;
-    const came = new Set(r.attendance.filter((a) => a.date === date && a.type === 'in').map((a) => a.empId));
-    // Bugun hech kim belgilanmagan bo'lsa (dam olish kuni yoki kiosk hali ishlatilmayapti) — yolg'on signal bermaymiz
-    if (!came.size) { if (toMin(time) > toMin(r.workStart) + 180) r.autoCheck = date; continue; }
+    const anyIn = r.attendance.some((a) => a.date === date && a.type === 'in');
+    // Bugun hech kim belgilanmagan bo'lsa (dam olish kuni yoki kiosk ishlatilmayapti) — yolg'on signal bermaymiz
+    if (!anyIn) { if (toMin(time) > toMin(r.workStart) + 180) r.autoCheck = date; continue; }
     r.autoCheck = date;
-    const away = new Set(r.absences.filter((a) => a.date === date).map((a) => a.empId));
-    const missing = r.employees.filter((e) => !e.isAdmin && !e.pending && (e.descriptors || []).length && !came.has(e.id) && !away.has(e.id));
-    const missIds = new Set(missing.map((e) => e.id));
-    for (const e of missing) {
-      makeSuggestion(r, e, 'xabarsiz kelmadi', 'auto', missIds);
-      if (e.tgChatId) tg('sendMessage', { chat_id: e.tgChatId, text: `Assalomu alaykum, ${e.name}! Bugun ishda belgilanmadingiz. Sababini tanlang — rahbaringizga yetkazaman:`, reply_markup: { inline_keyboard: [[{ text: '🤒 Kasalman', callback_data: `ab:${r.code}:${e.id}:kasal` }, { text: '⏰ Kechikyapman', callback_data: `ab:${r.code}:${e.id}:kech` }], [{ text: '🏖 Ta’tildaman', callback_data: `ab:${r.code}:${e.id}:tatil` }, { text: '📝 Uzrli sabab', callback_data: `ab:${r.code}:${e.id}:uzr` }]] } });
-    }
-    pushEvent(r, 'absence', `AI Assistant davomatni tekshirdi`);
-    save();
+    runAutoCheck(r, false);
   }
 }, 60 * 1000);
+app.post('/api/rooms/:code/assistant-run', (req, res) => {
+  const r = getRoom(req, res); if (!r || !requireAdmin(req, res, r)) return;
+  res.json(runAutoCheck(r, true));
+});
+app.get('/api/rooms/:code/assistant-history', (req, res) => {
+  const r = getRoom(req, res); if (!r || !requireAdmin(req, res, r)) return;
+  res.json({ history: (r.suggestions || []).filter((g) => g.status !== 'pending').slice(-40).reverse() });
+});
+// Xodim: bugun men kimning o'rniga mas'ulman
+app.get('/api/rooms/:code/my-subs', (req, res) => {
+  const r = getRoom(req, res); if (!r) return; const me = requireMember(req, res, r); if (!me) return;
+  const { date } = nowTZ();
+  res.json({ subs: (r.suggestions || []).filter((g) => g.status === 'approved' && g.date === date && g.toId === me.id).map((g) => ({ name: g.name, reason: g.reason })) });
+});
 
 // Kun oxirida AI xulosa Telegram'ga
 setInterval(async () => {

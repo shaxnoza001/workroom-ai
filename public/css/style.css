@@ -434,3 +434,5 @@ table th{background:transparent}
 :root[data-theme=light] .card,:root[data-theme=light] .price,:root[data-theme=light] .story .st,:root[data-theme=light] .nums>div{border-color:rgba(255,255,255,.8)}
 
 .mock .phone,.mock .phone .muted{color:#fff}.mock .phone .muted{opacity:.7}
+
+.side .room b,.side .room #room-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.top h1,.card h3,.list-item .grow{overflow-wrap:anywhere}
